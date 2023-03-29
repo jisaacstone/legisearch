@@ -1,0 +1,7 @@
+minutes
+ocr_minutes
+calendars
+*.db
+*.sw?
+*.pyc
+*.bak
