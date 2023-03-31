@@ -2,6 +2,7 @@
 
 import re
 import sys
+import json
 import sqlite3
 from pathlib import Path
 upper_re = re.compile(r'^(\d)\.(\d\d?)\.? ([A-Z0-9 \n:;—§\'’"/\\(),._-]+\b)', re.MULTILINE)
@@ -12,10 +13,12 @@ METASEP='-=-=-\n'
 
 def order_makes_sense(sect, sub, old_sect, old_sub):
     # no going backwards
-    if sect < old_sect or sub < old_sub:
+    if sect < old_sect:
+        print(f'going backwards', file=sys.stderr)
         return False
     # sub items should always increment by one
     if sect == old_sect and sub != old_sub + 1:
+        print(f'nonmonotonic subincrement', file=sys.stderr)
         return False
     return True
 
@@ -70,6 +73,7 @@ def create_table(connection):
         description text,
         date text,
         link text,
+        body text COLLATE NOCASE,
         doctype text COLLATE NOCASE,
         UNIQUE(section, subsection, title) ON CONFLICT REPLACE)
     ''')
@@ -78,7 +82,7 @@ def create_table(connection):
 
 def insert_item(cursor, item):
     cursor.execute(
-        'INSERT INTO minutes VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO minutes VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         (
             item['section'],
             item['subsection'],
@@ -86,9 +90,22 @@ def insert_item(cursor, item):
             item.get('description'),
             item.get('date'),
             item.get('link'),
+            item.get('body'),
             item.get('doctype')
         )
     )
+
+
+def data_from_db():
+    connection = sqlite3.connect('minutes.db')
+    connection.row_factory = sqlite3.Row
+    cursor = connection.cursor()
+    cursor.execute('SELECT DISTINCT title FROM minutes')
+    data = {r[0].lower(): [] for r in cursor.fetchall()}
+    cursor.execute('SELECT * FROM minutes')
+    for row in cursor.fetchall():
+        data[row['title'].lower()].append({k: row[k] for k in row.keys()})
+    return data
 
 
 def extract_and_save(filename: str):
@@ -110,7 +127,8 @@ def extract_all():
             extract_and_save(file)
 
 
-if __name__ == '__main__':
+def print_all():
+    # for testing
     base = Path('ocr_minutes')
     for year in base.iterdir():
         for file in year.iterdir():
@@ -120,3 +138,29 @@ if __name__ == '__main__':
             for item in extract_items(content):
                 item.pop('description')
                 print(item)
+
+
+def db_to_template():
+    data = data_from_db()
+    strdata = json.dumps(data)
+    print(strdata[:100])
+    with open('minutes.html.template', 'r') as fob:
+        html = fob.read().replace('<%MINUTES%>', strdata)
+    with open('minutes.html', 'w') as fob:
+        fob.write(html)
+
+
+if __name__ == '__main__':
+    action = (sys.argv + ['extract'])[1]
+    if action == 'extract':
+        extract_all()
+    elif action == 'generate':
+        db_to_template()
+    else:
+        print(f'''
+Usage: {sys.argv[0]} ACTION
+where ACTION is:
+
+  extract   - extract data from the ocr files and instert into the sqlite db
+  generate  - query data from the sqlite db and generate a static html page
+''')

@@ -32,7 +32,6 @@ def ocr_all():
             txt = out2 / (file.stem + '.txt')
             if not txt.exists():
                 ocr_file(file, txt)
-            break
 
 def ocr_file(pdf_file, txt_file):
     images = pdf2image.convert_from_path(pdf_file)

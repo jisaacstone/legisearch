@@ -1,0 +1,78 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+<style>
+.result {
+  max-width: 80vw;
+}
+.resultDescription {
+  text-align: left;
+  max-height: 20rem;
+  overflow-y: clip;
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@tarekraafat/autocomplete.js@10.2.7/dist/autoComplete.min.js"></script>
+<script>
+
+  const minutes = <%MINUTES%>;
+  const keys = Object.keys(minutes);
+  const maxResults = 25;
+  const search = (term_) => {
+    const term = term_.toLowerCase();
+    const results = [];
+    keys.filter(key => key.startsWith(term))
+        .forEach(k => results.push(...minutes[k]));
+    if (results.length > maxResults) {
+      return results.slice(0, maxResults);
+    }
+    keys.filter(key => key.includes(' ' + term))
+        .forEach(k => results.push(...minutes[k]));
+    return results.slice(0, maxResults);
+  }
+
+  window.onload = () => {
+    const acEl = document.getElementById('autoComplete');
+    const resEl = document.getElementById('results');
+    acEl.addEventListener('input', () => {
+      const value = acEl.value;
+      const results = search(value);
+      console.log(results);
+      resEl.innerHTML = '';
+      results.forEach(res => {
+        const div = document.createElement('div');
+        div.className = 'result';
+        const title = document.createElement('h3');
+        const doctype = document.createElement('a');
+        const desc = document.createElement('div');
+        desc.className = 'resultDescription';
+        title.textContent = res.section + '.' + res.subsection + ' ' + res.title;
+        doctype.textContent = (res.doctype || 'minutes') + ' - ' + (res.body || 'council') + ' - ' + (res.date || 'date unknown');
+        doctype.setAttribute('href', res.link)
+        desc.innerHTML = res.description.replaceAll('.\n', '.\n<p>');
+        div.appendChild(title);
+        div.appendChild(doctype);
+        div.appendChild(desc);
+        resEl.appendChild(div);
+        console.log(res, resEl);
+      });
+    });
+  };
+  
+  //fetch("http://www.jisaacstone.com/data/minutes.json").then(response => response.json()).then(json => document.minutes = json);
+</script>
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <h1>Yo</h1>
+      </header>
+      <div class="body" align="center">
+        <div class="autoComplete_wrapper">
+          <input id="autoComplete" type="text" tabindex="1">
+        </div>
+        <div id="results">
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
