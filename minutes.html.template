@@ -2,14 +2,49 @@
 <html>
   <head>
 <style>
+
+.header {
+  text-align: center;
+}
+.autocomplete-wrapper {
+  font-size: x-large;
+  margin: 1rem;
+}
+#autoComplete {
+  font-size: x-large;
+  height: 1.5em;
+  border: 0.5rem double rgba(13, 86, 12, 0.3);
+}
 .result {
-  max-width: 80vw;
+  max-width: 80rem;
+  padding: 1rem;
+  background-color: rgba(89, 58, 50, 0.1);
+}
+.result:nth-child(even) {
+  background-color: rgba(161, 168, 180, 0.1);
 }
 .resultDescription {
   text-align: left;
-  max-height: 20rem;
+  max-height: 10rem;
   overflow-y: clip;
+  cursor: s-resize;
 }
+.resultDescription.open {
+  max-height: initial;
+  cursor: n-resize;
+}
+.resultLinks {
+  margin: 1rem;
+}
+.resultLinks a {
+  margin: 0.5rem;
+  padding: 0.5rem;
+  font-size: large;
+  font-weight: 300;
+  background-color: rgba(20, 22, 99, 0.1);
+  border-radius: 1rem;
+}
+
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@tarekraafat/autocomplete.js@10.2.7/dist/autoComplete.min.js"></script>
 <script>
@@ -33,29 +68,53 @@
   window.onload = () => {
     const acEl = document.getElementById('autoComplete');
     const resEl = document.getElementById('results');
-    acEl.addEventListener('input', () => {
+    const onType = () => {
       const value = acEl.value;
-      const results = search(value);
-      console.log(results);
       resEl.innerHTML = '';
+      if (value.length < 1) {
+        return;
+      }
+      const results = search(value);
+      //console.log(results);
       results.forEach(res => {
         const div = document.createElement('div');
         div.className = 'result';
+
         const title = document.createElement('h3');
-        const doctype = document.createElement('a');
+        title.textContent = res.section + '.' + res.subsection + ' ' + res.title;
+        div.appendChild(title);
+
+        const doctype = document.createElement('div');
+        doctype.textContent = (res.doctype || 'minutes') + ' - ' + (res.body || 'council') + ' - ' + (res.date || 'date unknown');
+        div.appendChild(doctype);
+
+        const links = document.createElement('div');
+        links.className = 'resultLinks';
+        const ilink = document.createElement('a');
+        ilink.setAttribute('href', res.link.replace('M=M', 'Options=info').replace('View.ashx', 'MeetingDetail.aspx'));
+        ilink.textContent = 'info';
+        links.appendChild(ilink);
+        const alink = document.createElement('a');
+        alink.setAttribute('href', res.link.replace('M=M', 'M=A'));
+        alink.textContent = 'agenda';
+        links.appendChild(alink);
+        const mlink = document.createElement('a');
+        mlink.setAttribute('href', res.link);
+        mlink.textContent = 'minutes';
+        links.appendChild(mlink);
+        div.appendChild(links);
+
         const desc = document.createElement('div');
         desc.className = 'resultDescription';
-        title.textContent = res.section + '.' + res.subsection + ' ' + res.title;
-        doctype.textContent = (res.doctype || 'minutes') + ' - ' + (res.body || 'council') + ' - ' + (res.date || 'date unknown');
-        doctype.setAttribute('href', res.link)
         desc.innerHTML = res.description.replaceAll('.\n', '.\n<p>');
-        div.appendChild(title);
-        div.appendChild(doctype);
+        desc.onclick = () => desc.classList.toggle('open');
         div.appendChild(desc);
+
         resEl.appendChild(div);
-        console.log(res, resEl);
       });
-    });
+    };
+    acEl.addEventListener('input', onType);
+    onType();
   };
   
   //fetch("http://www.jisaacstone.com/data/minutes.json").then(response => response.json()).then(json => document.minutes = json);
@@ -64,7 +123,7 @@
   <body>
     <div class="container">
       <header class="header">
-        <h1>Yo</h1>
+        <h1>Search Mountain View City Council Meeting Minutes</h1>
       </header>
       <div class="body" align="center">
         <div class="autoComplete_wrapper">

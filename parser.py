@@ -143,7 +143,6 @@ def print_all():
 def db_to_template():
     data = data_from_db()
     strdata = json.dumps(data)
-    print(strdata[:100])
     with open('minutes.html.template', 'r') as fob:
         html = fob.read().replace('<%MINUTES%>', strdata)
     with open('minutes.html', 'w') as fob:
