@@ -3,6 +3,7 @@ ocr_minutes
 minutes.html
 calendars
 *.db
+*.html
 *.sw?
 *.pyc
 *.bak
