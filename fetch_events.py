@@ -61,7 +61,6 @@ def fetch_events(min_id=0, limit=math.inf, fetch_matter_text=False):
     url = EVENTS.format(min_id)
     if limit < 1000:
         url += f'&$top={limit}'
-    print('url', url)
     response = request.urlopen(url)
     omid = min_id
     event = None
@@ -94,7 +93,7 @@ def fetch_events(min_id=0, limit=math.inf, fetch_matter_text=False):
         min_id = event['EventId']
         yield event
     if limit and min_id != omid:
-        yield from events(min_id, limit)
+        yield from fetch_events(min_id, limit)
 
 
 def create_tables(connection):
@@ -103,8 +102,8 @@ def create_tables(connection):
         id int NOT NULL,
         body int NOT NULL,
         date text NOT NULL,
-        time text NOT NULL,
-        agenda text NOT NULL,
+        time text,
+        agenda text,
         minutes text,
         insiteurl text NOT NULL,
         UNIQUE(id) ON CONFLICT REPLACE)
@@ -121,7 +120,8 @@ def create_tables(connection):
         matterstatus text,
         mattertype text,
         mattertext text,
-        UNIQUE(id) ON CONFLICT REPLACE)
+        UNIQUE(id) ON CONFLICT REPLACE,
+        UNIQUE(title, agendanumber) ON CONFLICT REPLACE)
     ''')
     connection.cursor().execute('''
         CREATE TABLE IF NOT EXISTS bodies(
@@ -158,9 +158,9 @@ def insert_events(connection, events):
                 (
                     event['EventId'],
                     event['EventBodyId'],
-                    event['EventDate'],
-                    event['EventTime'],
-                    event['EventAgendaFile'],
+                    event['EventDate'] or '',
+                    event['EventTime'] or '',
+                    event['EventAgendaFile'] or '',
                     event['EventMinutesFile'],
                     event['EventInSiteURL']
                 )
@@ -233,10 +233,13 @@ def db_to_template():
 
 
 if __name__ == '__main__':
-    arg = sys.argv[-1]
+    arg = sys.argv[1] if len(sys.argv) > 1 else 'fetch'
     if arg == 'fetch':
-        fetch_more_events(limit=50)
+        limit = int(sys.argv[2]) if len(sys.argv) > 2 else 50
+        fetch_more_events(limit=limit)
     elif arg == 'reset':
         reset()
     elif arg == 'generate':
         db_to_template()
+    else:
+        print(f'usage: {sys.argv[0]} reset | fetch [limit] | generate')

@@ -17,7 +17,8 @@
 }
 .result {
   max-width: 80rem;
-  padding: 1rem;
+  padding: 3rem 1rem 1rem;
+  position: relative;
   background-color: rgba(89, 58, 50, 0.1);
 }
 .result:nth-child(even) {
@@ -37,8 +38,20 @@
   max-height: initial;
   cursor: n-resize;
 }
+.meetinginfo {
+  text-align: left;
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  width: 50%;
+}
 .resultLinks {
-  margin: 1rem;
+  margin: 0.2rem;
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 50%;
+  text-align: right;
 }
 .resultLinks a {
   margin: 0.5rem;
@@ -47,6 +60,9 @@
   font-weight: 300;
   background-color: rgba(20, 22, 99, 0.1);
   border-radius: 1rem;
+  min-width: 7rem;
+  text-align: center;
+  display: inline-block;
 }
 .attachments {
   margin: 1rem;
@@ -75,6 +91,17 @@
     }
     keys.filter(key => key.includes(' ' + term))
         .forEach(k => results.push(...items[k]));
+    if (results.length > maxResults) {
+      return results.slice(0, maxResults);
+    }
+    keys.filter(key => key.includes(term))
+        .forEach(k => results.push(...items[k]));
+    if (results.length > maxResults) {
+      return results.slice(0, maxResults);
+    }
+    const terms = term.split(" ");
+    keys.filter(key => terms.every((t) => key.includes(t)))
+        .forEach(k => results.push(...items[k]));
     return results.slice(0, maxResults);
   }
 
@@ -95,14 +122,15 @@
         const div = document.createElement('div');
         div.className = 'result';
 
-        //title
-        const title = document.createElement('h3');
-        title.textContent = res.agendanumber + ' ' + res.title;
-        div.appendChild(title);
-
-        //subtitle
+        //meeting info
         const doctype = document.createElement('div');
-        doctype.textContent = body + ' - ' + event.date.split('T')[0] + ' ' + event.time;
+        doctype.className = 'meetinginfo';
+        const bodyel = document.createElement('div');
+        bodyel.textContent = body;
+        doctype.appendChild(bodyel);
+        const datetime = document.createElement('div')
+        datetime.textContent = event.date.split('T')[0] + ' ' + event.time;
+        doctype.appendChild(datetime);
         div.appendChild(doctype);
 
         //meeting links
@@ -126,6 +154,12 @@
         }
         div.appendChild(links);
 
+        //title
+        const title = document.createElement('h3');
+        title.textContent = res.agendanumber + ' ' + res.title;
+        div.appendChild(title);
+
+        //attachments
         if (res.matterattachments !== '{}') {
           console.log(res, res.matterattachments);
           const attachments = JSON.parse(res.matterattachments);
