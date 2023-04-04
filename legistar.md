@@ -116,3 +116,64 @@ Fetch the key-value pair from this, reduces storage space a bit just to store id
 | "BodyUsedActingFlag" | no | ? | 0 | 
 | "BodyUsedTargetFlag" | no | ? | 0 | 
 | "BodyUsedSponsorFlag" | no | ? | 0 |
+
+## `/events/EVENTID/eventitems?Attachments=1`
+
+| key | fetched | type | example value |
+| "EventItemId" | yes | int pk | 14334 | 
+| "EventItemGuid" | no | str | 3F49F475-77B5-4338-A9CD-870A378F4992" | 
+| "EventItemLastModifiedUtc" | no | iso datetime | "2014-05-24T04:16:05.393" | 
+| "EventItemRowVersion" | no | str | "AAAAAAAN5gY=" | 
+| "EventItemEventId" | no | foreignkey `/events` | 901 | 
+| "EventItemAgendaSequence" | no | int | 11 | 
+| "EventItemMinutesSequence" | no | int | 16 | 
+| "EventItemAgendaNumber" | yes | str | "4.1" | 
+| "EventItemVideo" | no | int | 72318 | 
+| "EventItemVideoIndex" | no | ? | null | 
+| "EventItemVersion" | no | str | "1" | 
+| "EventItemAgendaNote" | no | ? | null | 
+| "EventItemMinutesNote" | no | ? | null | 
+| "EventItemActionId" | no | str | 378 | 
+| "EventItemActionName" | no | str | "approved on the Consent Calendar" | 
+| "EventItemActionText" | yes | str | "Approve Minutes for the Special Council Meeting of January 21" |
+| "EventItemPassedFlag" | no | int | 1 | 
+| "EventItemPassedFlagName" | no | str | "Pass" | 
+| "EventItemRollCallFlag" | no | ? | null | 
+| "EventItemFlagExtra" | no | ? | null | 
+| "EventItemTitle" | yes | str | "Approval of Minutes." | 
+| "EventItemTally" | no | ? | null | 
+| "EventItemAccelaRecordId" | no | ? | null | 
+| "EventItemConsent" | no | ? | 0 | 
+| "EventItemMoverId" | no | foreignkey `/persons` | 231 | 
+| "EventItemMover" | no | str | "Chris Clark" | 
+| "EventItemSeconderId" | no | foreignkey `/persons` | 236 | 
+| "EventItemSeconder" | no | str | "Jac Siegel" | 
+| "EventItemMatterId" | yes | foreignkey `/matters` | 1364 | 
+| "EventItemMatterGuid" | no | str | "6DD1C098-A4F9-4287-916C-CE706CEE233C" | 
+| "EventItemMatterFile" | no | str | "14-88" | 
+| "EventItemMatterName" | no | ? | null | 
+| "EventItemMatterType" | no | str | "Consent Calendar" | 
+| "EventItemMatterStatus" | yes | str | "Passed" | 
+| "EventItemMatterAttachments" | yes | array MatterAttachment | see below |
+
+## matter attachments
+
+| key | fetched | type | example value |
+| "MatterAttachmentId" | no | int pk | 773 | 
+| "MatterAttachmentGuid" | no | str | "D8115DA7-2555-4D68-91BB-B42602170BF9" | 
+| "MatterAttachmentLastModifiedUtc" | no | iso datetime | "2014-05-24T04:16:07.367" | 
+| "MatterAttachmentRowVersion" | no | str | "AAAAAAANZeQ=" | 
+| "MatterAttachmentName" | yes | str | "ATT 1 - 01-21-14 Council Minutes" | 
+| "MatterAttachmentHyperlink" | yes | url pdf | "https://legistar1.granicus.com/mountainview/attachments/27561781-664d-4a1d-8004-52222f7bb303.pdf" | 
+| "MatterAttachmentFileName" | no | str | "27561781-664d-4a1d-8004-52222f7bb303.pdf" | 
+| "MatterAttachmentMatterVersion" | no | str | "0" | 
+| "MatterAttachmentIsHyperlink" | no | bool | false | 
+| "MatterAttachmentBinary" | no | ? | null | 
+| "MatterAttachmentIsSupportingDocument" | no | bool | false | 
+| "MatterAttachmentShowOnInternetPage" | no | bool | true | 
+| "MatterAttachmentIsMinuteOrder" | no | bool | false | 
+| "MatterAttachmentIsBoardLetter" | no | bool | false | 
+| "MatterAttachmentAgiloftId" | no | int | 0 | 
+| "MatterAttachmentDescription" | no | ? | null | 
+| "MatterAttachmentPrintWithReports" | no | bool | false | 
+| "MatterAttachmentSort" | no | int | -2147483648 |
