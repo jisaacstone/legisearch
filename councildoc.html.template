@@ -26,46 +26,55 @@ a:visited {
 }
 .result {
   max-width: 80rem;
-  padding: 3rem 1rem 1rem;
+  padding: 1rem;
   position: relative;
   background-color: rgba(89, 58, 50, 0.1);
 
   overflow-y: hidden;
   text-overflow: ellipsis;
-  max-height: 9rem;
+  max-height: 10rem;
+
+  display: flex;
+  flex-wrap: wrap;
+}
+.result > * {
+  flex-grow: 1;
 }
 .result.long {
   cursor: s-resize;
-  box-shadow: 0 -1rem 1rem -1rem inset rgba(49, 12, 23, 0.2);
+  box-shadow: 0 -1rem 1rem -1rem inset rgba(49, 12, 23, 0.3);
 }
 .result.long.open {
   max-height: initial;
   cursor: n-resize;
+  box-shadow: initial;
 }
 .result:nth-child(even) {
   background-color: rgba(161, 168, 180, 0.1);
 }
+.resultTitle {
+  margin: 0.5rem;
+  text-align: left;
+  width: 100%;
+}
 .resultDescription {
   text-align: left;
+  width: 100%;
+}
+.matter {
+  text-align: left;
+  align-self: center;
 }
 .meetinginfo {
   text-align: left;
-  position: absolute;
-  top: 0.5rem;
-  left: 0.5rem;
-  width: 50%;
+  align-self: center;
 }
 .meetinginfo div:nth-child(1) {
   font-weight: 500;
   text-shadow: 0.1rem 0.1rem 0.1rem rgba(200, 100, 110, 0.1);
 }
 .resultLinks {
-  margin: 0.2rem;
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 50%;
-  text-align: right;
+  align-self: center;
 }
 .resultLinks a {
   margin: 0.5rem;
@@ -78,7 +87,7 @@ a:visited {
   text-align: center;
 }
 .attachments {
-  margin: 1rem;
+  margin: 0 0.5rem;
 }
 .attachments a {
   margin: 0.1rem;
@@ -143,6 +152,20 @@ const makeResultElement = (res) => {
   doctype.appendChild(datetime);
   result.appendChild(doctype);
 
+  //matter info
+  console.log(res);
+  if (res.mattertype) {
+    const matters = document.createElement('div');
+    matters.className = 'matter';
+    const mtype = document.createElement('div');
+    mtype.textContent = res.mattertype;
+    matters.appendChild(mtype);
+    const mstatus = document.createElement('div');
+    mstatus.textContent = res.matterstatus;
+    matters.appendChild(mstatus)
+    result.appendChild(matters);
+  }
+
   //meeting links
   const links = document.createElement('div');
   links.className = 'resultLinks';
@@ -166,6 +189,7 @@ const makeResultElement = (res) => {
 
   //title
   const title = document.createElement('h3');
+  title.className = 'resultTitle';
   title.textContent = res.agendanumber + ' ' + res.title;
   result.appendChild(title);
 

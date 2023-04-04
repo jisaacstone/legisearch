@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-'''usage: fetch_events.py reset | fetch [limit] | generate
+'''usage: fetch_events.py reset | fetch [limit] [include_nonfinal] | generate
 
 fetch:    - pull data for LIMIT more meetings and store in the db
 generate: - create a html file with the meeting data
@@ -33,6 +33,7 @@ EVENTFIELDS = (
     'EventTime',
     'EventAgendaFile',
     'EventMinutesFile',
+    'EventMinutesStatusId',
     'EventInSiteURL')
 # An assumption here is that event ids always increase
 EVENTS = (
@@ -58,6 +59,7 @@ ITEMS = (
     '&$expand=EventItemMatterAttachments&$select=' +
     ','.join(ITEMFIELDS) +
     '&$orderby=EventItemMinutesSequence,EventItemAgendaSequence')
+FINALSTATUS = 10  # for re-downloading non-final events
 
 
 def add_item_data(item, fetch_matter_text=False):
@@ -74,7 +76,7 @@ def add_item_data(item, fetch_matter_text=False):
         item['text'] = mattertext
     else:
         item['text'] = '' if fetch_matter_text else None
-    # sqlite supports json, but the pysthon stdlib doesn't interface easily
+    # sqlite supports json, but the python stdlib doesn't interface easily
     # so I just store as text, and use JSON.parse on the frontend
     item['attachments'] = json.dumps(
         {m['MatterAttachmentName']: m['MatterAttachmentHyperlink']
@@ -140,6 +142,7 @@ def create_tables(connection):
         time text,
         agenda text,
         minutes text,
+        minutestatus int,
         insiteurl text NOT NULL,
         UNIQUE(id) ON CONFLICT REPLACE)
     ''')
@@ -194,7 +197,7 @@ def insert_events(connection, events):
                 sys.stdout.write(f'\r#{i}: {event["EventId"]}   ')
             # insert event
             cursor.execute(
-                'INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                 (
                     event['EventId'],
                     event['EventBodyId'],
@@ -202,6 +205,7 @@ def insert_events(connection, events):
                     event['EventTime'] or '',
                     event['EventAgendaFile'] or '',
                     event['EventMinutesFile'],
+                    event['EventMinutesStatusId'],
                     event['EventInSiteURL']
                 )
             )
@@ -240,13 +244,25 @@ def fetch_bodies(connection):
     connection.commit()
 
 
-def fetch_more_events(limit=100):
+def fetch_more_events(limit=100, refetch_nonfinal=False):
     '''check the max event id from the db, and fetch `limit` more events'''
     connection = sqlite3.connect('minutes.db')
     try:
         cursor = connection.cursor();
-        cursor.execute('SELECT max(id) FROM events')
-        maxid, = cursor.fetchone()
+        try:
+            if refetch_nonfinal:
+                cursor.execute(
+                    'SELECT max(id) FROM events WHERE minutestatus <> ?',
+                    [FINALSTATUS]
+                )
+            else:
+                cursor.execute('SELECT max(id) FROM events')
+            maxid, = cursor.fetchone()
+        except sqlite3.OperationalError:
+            # probably our first run
+            create_tables(connection)
+            fetch_bodies(connection)
+            maxid = 0
         print(f'fetching up to {limit} events, starting from {maxid}')
         event_iter = fetch_events(min_id=maxid, limit=limit)
         insert_events(connection, event_iter)
@@ -288,7 +304,9 @@ if __name__ == '__main__':
     arg = sys.argv[1] if len(sys.argv) > 1 else 'fetch'
     if arg == 'fetch':
         limit = int(sys.argv[2]) if len(sys.argv) > 2 else 50
-        fetch_more_events(limit=limit)
+        # assume any 3rd argument is "true". TODO: argparse
+        nonfinal = len(sys.argv) > 3
+        fetch_more_events(limit=limit, refetch_nonfinal=nonfinal)
     elif arg == 'reset':
         reset()
     elif arg == 'generate':

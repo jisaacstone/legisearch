@@ -78,7 +78,7 @@ They are fetched from `/events/ID/eventitems`
 | "EventVideoStatus" | no | str | "Public" | 
 | "EventAgendaStatusId" | no | int | 10 | 
 | "EventAgendaStatusName" | no | str | "Final" | 
-| "EventMinutesStatusId" | no | int | 10 | 
+| "EventMinutesStatusId" | yes | int | 10 | 
 | "EventMinutesStatusName" | no | str | "Final" | 
 | "EventLocation" | no | str | "Council Chambers - 500 Castro Street" | 
 | "EventAgendaFile" | yes | url (pdf) | "http://legistar1.granicus.com/mountainview/meetings/2014/1/896_A_City_Council_14-01-07_Agenda_and_Notice.pdf" | 
