@@ -1,11 +1,30 @@
 #!/usr/bin/env python3
 
+'''usage: fetch_events.py reset | fetch [limit] | generate
+
+fetch:    - pull data for LIMIT more meetings and store in the db
+generate: - create a html file with the meeting data
+reset:    - drop all tables and data from the db
+
+Recommended usage: run fetch until no more data is read, then run generate
+'''
+
 from urllib import request
 import sys
 import json
 import math
 import sqlite3
 
+# Legistar web api is documented here
+# http://webapi.legistar.com/Help
+# Documentation is sparse, but reading the odata spec + trial and error works
+# I was not able to get the odata batch operations to work, I think it might
+# be because only GET requests are allowed
+# {client} in the documentation refers to "mountainview" in our case
+# "Events" are meetings
+# "EventItem" is a thing that happened at a meeting, could be agendized items
+# or just random text like "PAGE BREAK"
+# "Matters" are things the meeting body discusses or votes on
 BASEURL = 'https://webapi.legistar.com/v1/mountainview/'
 EVENTFIELDS = (
     'EventId',
@@ -15,6 +34,7 @@ EVENTFIELDS = (
     'EventAgendaFile',
     'EventMinutesFile',
     'EventInSiteURL')
+# An assumption here is that event ids always increase
 EVENTS = (
     BASEURL +
     'events?$orderby=EventId&$select=' +
@@ -30,6 +50,8 @@ ITEMFIELDS = (
     'EventItemMatterAttachments/MatterAttachmentHyperlink',
     'EventItemMatterStatus',
     'EventItemMatterType')
+# The data can sometimes be messy, the observed order is EventItemMintuesSequence
+# but sometimes this value is null.
 ITEMS = (
     BASEURL +
     'events/{}/eventitems?AgendaNote=1&MinutesNote=1&Attachments=1' +
@@ -40,6 +62,8 @@ ITEMS = (
 
 def add_item_data(item, fetch_matter_text=False):
     matterid = item['EventItemMatterId']
+    # It seems the matter text is just a repeat of the EventItemActionText
+    # And fetching is slow so disabling it for now
     if matterid and fetch_matter_text:
         mattertext = ''
         matterurl = BASEURL + f'/matters/{matterid}/'
@@ -50,6 +74,8 @@ def add_item_data(item, fetch_matter_text=False):
         item['text'] = mattertext
     else:
         item['text'] = '' if fetch_matter_text else None
+    # sqlite supports json, but the pysthon stdlib doesn't interface easily
+    # so I just store as text, and use JSON.parse on the frontend
     item['attachments'] = json.dumps(
         {m['MatterAttachmentName']: m['MatterAttachmentHyperlink']
          for m in item.pop('EventItemMatterAttachments')}
@@ -58,16 +84,24 @@ def add_item_data(item, fetch_matter_text=False):
 
 
 def fetch_events(min_id=0, limit=math.inf, fetch_matter_text=False):
+    '''fetches events from the legistart api
+
+    will start at `min_id` and continue until `limit`
+    '''
     url = EVENTS.format(min_id)
+    # max page size is 1000
+    # currently there are less than 3000 items so we can read everything in 3 pages
     if limit < 1000:
         url += f'&$top={limit}'
-    response = request.urlopen(url)
     omid = min_id
-    event = None
+    response = request.urlopen(url)
     for event in json.load(response):
         limit -= 1
+        # fetch event items
         items = json.load(request.urlopen(ITEMS.format(event['EventId'])))
         event['items'] = []
+        # some event items are just text, and are motions or discussion related to
+        # the previous item. So we keep track of the item and append to it's description
         item = None
         for item_ in items:
             if item_['EventItemAgendaNumber']:
@@ -79,6 +113,7 @@ def fetch_events(min_id=0, limit=math.inf, fetch_matter_text=False):
                     continue
                 item = add_item_data(item_)
             elif item and (item_['EventItemActionText'] or item_['EventItemTitle']):
+                # any of these could be null
                 item['EventItemActionText'] = '\n'.join(filter(
                     None,
                     (
@@ -133,6 +168,7 @@ def create_tables(connection):
 
 
 def data_from_db(connection):
+    '''all gathered data from the sqlite db'''
     connection.row_factory = sqlite3.Row
     cursor = connection.cursor()
     cursor.execute('SELECT DISTINCT title FROM items')
@@ -150,9 +186,13 @@ def data_from_db(connection):
 def insert_events(connection, events):
     cursor = connection.cursor()
     try:
+        i = None
         for i, event in enumerate(events):
+            # simple progress bar
+            i += 1
             if not i % 5:
                 sys.stdout.write(f'\r#{i}: {event["EventId"]}   ')
+            # insert event
             cursor.execute(
                 'INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?)',
                 (
@@ -165,26 +205,32 @@ def insert_events(connection, events):
                     event['EventInSiteURL']
                 )
             )
+            # bulk insert event items
             cursor.executemany(
                 'INSERT INTO items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 ((
-                    i['EventItemId'],
+                    item['EventItemId'],
                     event['EventId'],
-                    i['EventItemAgendaNumber'],
-                    i['EventItemActionText'],
-                    i['EventItemTitle'],
-                    i['EventItemMatterId'],
-                    i['attachments'],
-                    i['EventItemMatterStatus'],
-                    i['EventItemMatterType'],
-                    i['text']
-                ) for i in event['items'])
+                    item['EventItemAgendaNumber'],
+                    item['EventItemActionText'],
+                    item['EventItemTitle'],
+                    item['EventItemMatterId'],
+                    item['attachments'],
+                    item['EventItemMatterStatus'],
+                    item['EventItemMatterType'],
+                    item['text']
+                ) for item in event['items'])
             )
+        if i:
+            print(f'recorded {i} events')
+        else:
+            print('no more events to fetch')
     finally:
         connection.commit()
 
 
 def fetch_bodies(connection):
+    '''fetch and store meeting body data. city council is 138, etc'''
     url = BASEURL + 'bodies?$select=BodyId,BodyName'
     bodies = json.load(request.urlopen(url))
     connection.cursor().executemany(
@@ -195,12 +241,13 @@ def fetch_bodies(connection):
 
 
 def fetch_more_events(limit=100):
+    '''check the max event id from the db, and fetch `limit` more events'''
     connection = sqlite3.connect('minutes.db')
     try:
         cursor = connection.cursor();
         cursor.execute('SELECT max(id) FROM events')
         maxid, = cursor.fetchone()
-        print(f'fetching {limit} events, starting from {maxid}')
+        print(f'fetching up to {limit} events, starting from {maxid}')
         event_iter = fetch_events(min_id=maxid, limit=limit)
         insert_events(connection, event_iter)
     finally:
@@ -208,6 +255,7 @@ def fetch_more_events(limit=100):
 
 
 def reset():
+    '''drop all tables and data. dangerous'''
     connection = sqlite3.connect('minutes.db')
     cursor = connection.cursor();
     cursor.execute('DROP TABLE IF EXISTS events')
@@ -219,6 +267,10 @@ def reset():
 
 
 def db_to_template():
+    '''generate a all-in-one search webpage with our data embedded in
+
+    Generated file is about 7.5M
+    '''
     connection = sqlite3.connect('minutes.db')
     items, events, bodies = data_from_db(connection)
     with open('councildoc.html.template', 'r') as fob:
@@ -242,4 +294,4 @@ if __name__ == '__main__':
     elif arg == 'generate':
         db_to_template()
     else:
-        print(f'usage: {sys.argv[0]} reset | fetch [limit] | generate')
+        print(__doc__)
