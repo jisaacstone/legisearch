@@ -3,7 +3,8 @@
   <head>
 <style>
 
-a {
+
+a, span {
   display: inline-block;
 }
 a:hover {
@@ -74,9 +75,10 @@ a:visited {
   text-shadow: 0.1rem 0.1rem 0.1rem rgba(200, 100, 110, 0.1);
 }
 .resultLinks {
+  flex-grow: 0;
   align-self: center;
 }
-.resultLinks a {
+.resultLinks a, .resultLinks span {
   margin: 0.5rem;
   padding: 0.5rem;
   font-size: large;
@@ -92,6 +94,9 @@ a:visited {
 .attachments a {
   margin: 0.1rem;
   padding: 0.1rem;
+}
+.passed:before {
+  content: '\2611';
 }
 
 </style>
@@ -146,6 +151,7 @@ const makeResultElement = (res) => {
   doctype.className = 'meetinginfo';
   const bodyel = document.createElement('div');
   bodyel.textContent = body;
+  bodyel.className = 'body b-' + event.body;
   doctype.appendChild(bodyel);
   const datetime = document.createElement('div')
   datetime.textContent = event.date.split('T')[0] + ' ' + event.time;
@@ -159,10 +165,12 @@ const makeResultElement = (res) => {
     matters.className = 'matter';
     const mtype = document.createElement('div');
     mtype.textContent = res.mattertype;
+    mtype.className = 'mtype ' + res.mattertype.toLowerCase().replaceAll(' ', '-');
     matters.appendChild(mtype);
     const mstatus = document.createElement('div');
     mstatus.textContent = res.matterstatus;
-    matters.appendChild(mstatus)
+    mstatus.className = 'mstatus ' + res.matterstatus.toLowerCase().replaceAll(' ', '-');
+    matters.appendChild(mstatus);
     result.appendChild(matters);
   }
 
@@ -173,18 +181,29 @@ const makeResultElement = (res) => {
   ilink.setAttribute('href', event.insiteurl);
   ilink.textContent = 'info';
   links.appendChild(ilink);
+
+  var alink;
   if (event.agenda) {
-    const alink = document.createElement('a');
+    alink = document.createElement('a');
     alink.setAttribute('href', event.agenda);
-    alink.textContent = 'agenda';
-    links.appendChild(alink);
+  } else {
+    alink = document.createElement('span');
+    alink.className = 'not-available';
   }
+  alink.textContent = 'agenda';
+  links.appendChild(alink);
+
+  var mlink;
   if (event.minutes) {
-    const mlink = document.createElement('a');
+    mlink = document.createElement('a');
     mlink.setAttribute('href', event.minutes);
-    mlink.textContent = 'minutes';
-    links.appendChild(mlink);
+  } else {
+    mlink = document.createElement('span');
+    mlink.className = 'not-available';
   }
+  mlink.textContent = 'minutes';
+  links.appendChild(mlink);
+
   result.appendChild(links);
 
   //title
