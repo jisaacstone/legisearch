@@ -6,6 +6,7 @@ not currently fetching directly from `/matters`
 but some matter info is pulled from `/eventitems`
 
 | key | fetched | type | example value
+| --- | ------- | ---- | ----- |
 | "MatterId" | no | int | 1275 | 
 | "MatterGuid" | no | str | "5111087D-FB2C-4FB1-9F66-7F8C3E019A64" | 
 | "MatterLastModifiedUtc" | no | iso datetime | "2017-07-31T23:46:47.397" | 
@@ -67,6 +68,7 @@ I was unable to get `EventItems` to expand.
 They are fetched from `/events/ID/eventitems`
 
 | key | fetched | type | example value |
+| --- | ------- | ---- | ----- |
 | "EventId" | yes | int pk | 896 | 
 | "EventGuid" | no | str | "DC62D62D-A475-472C-8309-7104666A3888" | 
 | "EventLastModifiedUtc" | no | iso datetime | "2014-05-24T04:16:05.3" | 
@@ -96,6 +98,7 @@ They are fetched from `/events/ID/eventitems`
 Fetch the key-value pair from this, reduces storage space a bit just to store ids
 
 | key | fetched | type | example value |
+| --- | ------- | ---- | ----- |
 | "BodyId" | yes | int pk | 138 | 
 | "BodyGuid" | no | str | "126CADBD-5C20-48D6-98D4-739B3E573AC7" | 
 | "BodyLastModifiedUtc" | no | iso datetime | "2014-05-24T04:16:07.03" | 
@@ -120,6 +123,7 @@ Fetch the key-value pair from this, reduces storage space a bit just to store id
 ## `/events/EVENTID/eventitems?Attachments=1`
 
 | key | fetched | type | example value |
+| --- | ------- | ---- | ----- |
 | "EventItemId" | yes | int pk | 14334 | 
 | "EventItemGuid" | no | str | 3F49F475-77B5-4338-A9CD-870A378F4992" | 
 | "EventItemLastModifiedUtc" | no | iso datetime | "2014-05-24T04:16:05.393" | 
@@ -159,6 +163,7 @@ Fetch the key-value pair from this, reduces storage space a bit just to store id
 ## matter attachments
 
 | key | fetched | type | example value |
+| --- | ------- | ---- | ----- |
 | "MatterAttachmentId" | no | int pk | 773 | 
 | "MatterAttachmentGuid" | no | str | "D8115DA7-2555-4D68-91BB-B42602170BF9" | 
 | "MatterAttachmentLastModifiedUtc" | no | iso datetime | "2014-05-24T04:16:07.367" | 

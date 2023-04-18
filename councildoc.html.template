@@ -3,7 +3,6 @@
   <head>
 <style>
 
-
 a, span {
   display: inline-block;
 }
@@ -24,6 +23,35 @@ a:visited {
   font-size: x-large;
   height: 1.5em;
   border: 0.5rem double rgba(13, 86, 12, 0.3);
+}
+#filters {
+  display: flex;
+  flex-wrap: wrap;
+  height: 3rem;
+  overflow-x: hidden;
+  box-shadow: 0 -1rem 1rem -1rem inset rgba(49, 12, 23, 0.3);
+  margin-bottom: 0.5rem;
+}
+#filterhead {
+  cursor: pointer;
+}
+#filters.open {
+  height: initial;
+}
+.filterlist {
+  display: flex;
+  flex-wrap: wrap;
+}
+.filter {
+  flex-grow: 1;
+  padding: 0.1rem;
+  margin: 0.1rem;
+  border-radius: 0.1rem 0.2rem;
+  box-shadow: 0 0 0.3rem inset rgba(25, 25, 30, 0.2);
+}
+.filter.checked {
+  background-color: rgba(150, 200, 150, 0.1);
+  box-shadow: 0 0 0.3rem inset rgba(25, 225, 30, 0.3);
 }
 .result {
   max-width: 80rem;
@@ -106,7 +134,10 @@ a:visited {
 const items = <%ITEMS%>;
 const bodies = <%BODIES%>;
 const events = <%EVENTS%>;
-const maxResults = 50;
+const settings = {
+  maxResults: 75,
+  bodies: new Set(Object.keys(bodies))
+};
 
 const search = (term_) => {
   // Could not find a library that did even basic things like start of word matches being found first
@@ -117,28 +148,58 @@ const search = (term_) => {
   const addVals = (k) => {
     //remove the key so it doesn't show in other filters
     keys.splice(keys.indexOf(k), 1);
-    results.push(...items[k]);
+    items[k].forEach((item) => {
+      console.log(events[item.eventid].body, settings.bodies);
+      if (settings.bodies.has(events[item.eventid].body.toString())) {
+        results.push(item);
+      }
+    });
   };
   //starting with
   keys.filter(key => key.startsWith(term)).forEach(addVals);
-  if (results.length > maxResults) {
-    return results.slice(0, maxResults);
+  if (results.length > settings.maxResults) {
+    return results.slice(0, settings.maxResults);
   }
   //word starts with
   keys.filter(key => key.includes(' ' + term)).forEach(addVals);
-  if (results.length > maxResults) {
-    return results.slice(0, maxResults);
+  if (results.length > settings.maxResults) {
+    return results.slice(0, settings.maxResults);
   }
   //word contains
   keys.filter(key => key.includes(term)).forEach(addVals);
-  if (results.length > maxResults) {
-    return results.slice(0, maxResults);
+  if (results.length > settings.maxResults) {
+    return results.slice(0, settings.maxResults);
   }
   //word contains any
   const terms = term.split(" ");
   keys.filter(key => terms.every((t) => key.includes(t))).forEach(addVals);
-  return results.slice(0, maxResults);
+  return results.slice(0, settings.maxResults);
 }
+
+const makeFilters = (filterEl, callback) => {
+  const bodyFilter = document.createElement('div');
+  bodyFilter.className = 'filterlist';
+  Object.keys(bodies).forEach((bodyId) => {
+    const filter = document.createElement('div');
+    filter.className = 'filter';
+    filter.textContent = bodies[bodyId];
+    if (settings.bodies.has(bodyId)) {
+      filter.classList.add('checked');
+    }
+    filter.onclick = () => {
+      if (filter.classList.contains('checked')) {
+        filter.classList.remove('checked');
+        settings.bodies.delete(bodyId);
+      } else {
+        filter.classList.add('checked');
+        settings.bodies.add(bodyId);
+      }
+      callback();
+    };
+    bodyFilter.appendChild(filter);
+  });
+  filterEl.appendChild(bodyFilter);
+};
 
 const makeResultElement = (res) => {
   const event = events[res.eventid];
@@ -159,7 +220,6 @@ const makeResultElement = (res) => {
   result.appendChild(doctype);
 
   //matter info
-  console.log(res);
   if (res.mattertype) {
     const matters = document.createElement('div');
     matters.className = 'matter';
@@ -264,6 +324,8 @@ window.onload = () => {
     });
   };
   acEl.addEventListener('input', onType);
+  makeFilters(filEl, onType);
+  document.getElementById('filterhead').onclick = () => filEl.classList.toggle('open');
   //call immediatly, so page refresh pulls results
   onType();
 };
@@ -279,7 +341,8 @@ window.onload = () => {
         <div class="autoComplete_wrapper">
           <input id="autoComplete" type="text" tabindex="1">
         </div>
-        <div class="filters">
+        <div id="filters" class="long">
+          <h2 id="filterhead">filters</h2>
         </div>
         <div id="results">
         </div>
