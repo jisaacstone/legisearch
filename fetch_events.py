@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
 
-'''usage: fetch_events.py reset | fetch [limit] [include_nonfinal] | generate
-
-fetch:    - pull data for LIMIT more meetings and store in the db
-generate: - create a html file with the meeting data
-reset:    - drop all tables and data from the db
-
-Recommended usage: run fetch until no more data is read, then run generate
-'''
-
+from typing import Mapping, List, Any
 from urllib import request
 import sys
 import json
 import math
 import sqlite3
+import argparse
 
 # Legistar web api is documented here
 # http://webapi.legistar.com/Help
@@ -25,7 +18,8 @@ import sqlite3
 # "EventItem" is a thing that happened at a meeting, could be agendized items
 # or just random text like "PAGE BREAK"
 # "Matters" are things the meeting body discusses or votes on
-BASEURL = 'https://webapi.legistar.com/v1/mountainview/'
+# see legistar.md for more details
+BASEURL = 'https://webapi.legistar.com/v1/'
 EVENTFIELDS = (
     'EventId',
     'EventBodyId',
@@ -35,12 +29,6 @@ EVENTFIELDS = (
     'EventMinutesFile',
     'EventMinutesStatusId',
     'EventInSiteURL')
-# An assumption here is that event ids always increase
-EVENTS = (
-    BASEURL +
-    'events?$orderby=EventId&$select=' +
-    ','.join(EVENTFIELDS) +
-    '&$filter=EventAgendaFile+ne+null+and+EventId+gt+{}')
 ITEMFIELDS = (
     'EventItemId',
     'EventItemAgendaNumber',
@@ -51,31 +39,100 @@ ITEMFIELDS = (
     'EventItemMatterAttachments/MatterAttachmentHyperlink',
     'EventItemMatterStatus',
     'EventItemMatterType')
-# The data can sometimes be messy, the observed order is EventItemMintuesSequence
-# but sometimes this value is null.
-ITEMS = (
-    BASEURL +
-    'events/{}/eventitems?AgendaNote=1&MinutesNote=1&Attachments=1' +
-    '&$expand=EventItemMatterAttachments&$select=' +
-    ','.join(ITEMFIELDS) +
-    '&$orderby=EventItemMinutesSequence,EventItemAgendaSequence')
+TEMPLATE = 'councildoc.html.template'
 FINALSTATUS = 10  # for re-downloading non-final events
 
 
-def add_item_data(item, fetch_matter_text=False):
-    matterid = item['EventItemMatterId']
-    # It seems the matter text is just a repeat of the EventItemActionText
-    # And fetching is slow so disabling it for now
-    if matterid and fetch_matter_text:
-        mattertext = ''
-        matterurl = BASEURL + f'/matters/{matterid}/'
-        versions = json.load(request.urlopen(matterurl + 'versions'))
-        for v in versions:
-            textdata = json.load(request.urlopen(matterurl + f'/texts/{v["Key"]}'))
-            mattertext += textdata['MatterTextPlain']
-        item['text'] = mattertext
-    else:
-        item['text'] = '' if fetch_matter_text else None
+def events_url(
+    namespace: str,
+    min_id: int = 0,
+    limit: int = 1000,
+) -> str:
+    '''An assumption here is that event_id always increases'''
+    fields = ','.join(EVENTFIELDS)
+    url = (
+        f'{BASEURL}{namespace}/events?' +
+        f'$orderby=EventId&$select={fields}&' +
+        f'$filter=EventAgendaFile+ne+null+and+EventId+gt+{min_id}'
+    )
+    if limit and limit < 1000:
+        url += f'&$top={limit}'
+    return url
+
+
+def items_url(namespace: str, event_id: int) -> str:
+    ''' The data can sometimes be messy, the observed order is
+    EventItemMintuesSequence but sometimes this value is null.
+    '''
+    fields = ','.join(ITEMFIELDS)
+    url = (
+        f'{BASEURL}{namespace}/events/{event_id}/eventitems?' +
+        'AgendaNote=1&MinutesNote=1&Attachments=1&' +
+        f'$expand=EventItemMatterAttachments&$select={fields}&' +
+        '&$orderby=EventItemMinutesSequence,EventItemAgendaSequence'
+    )
+    return url
+
+
+def parser() -> argparse.ArgumentParser:
+    '''Command line useage definitions'''
+    root_parser = argparse.ArgumentParser(
+        prog='fetch_events',
+        description='legistar scraper and single-page search',
+    )
+
+    # parent has args for all commands
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument(
+        '-n', '--namespace',
+        help='legistar api subdomain and db name',
+        default='mountainview'
+    )
+    subparsers = root_parser.add_subparsers(
+        required=True,
+        dest='command',
+    )
+
+    # individual command parsers
+    fetch_parser = subparsers.add_parser(
+        'fetch',
+        parents=[parent],
+        help='fetch new events from the legistar api'
+    )
+    fetch_parser.add_argument(
+        '-l', '--limit',
+        help='max number of events to fetch',
+        type=int,
+        default=50
+    )
+    fetch_parser.add_argument(
+        '--refetch-nonfinal',
+        help='re-fetch events which did not have final minutes',
+        action='store_true'
+    )
+    fetch_parser.set_defaults(func=fetch_more_events)
+
+    reset_parser = subparsers.add_parser(
+        'reset',
+        parents=[parent],
+        help='wipe and re-create the database'
+    )
+    reset_parser.set_defaults(func=reset)
+
+    generate_parser = subparsers.add_parser(
+        'generate',
+        parents=[parent],
+        help='generate the static search html page'
+    )
+    generate_parser.add_argument(
+        '-o', '--outfile',
+        help='name of the html page to generate',
+    )
+    generate_parser.set_defaults(func=generate)
+    return root_parser
+
+
+def add_item_data(item):
     # sqlite supports json, but the python stdlib doesn't interface easily
     # so I just store as text, and use JSON.parse on the frontend
     item['attachments'] = json.dumps(
@@ -85,36 +142,47 @@ def add_item_data(item, fetch_matter_text=False):
     return item
 
 
-def fetch_events(min_id=0, limit=math.inf, fetch_matter_text=False):
+def fetch_events(
+    namespace: str,
+    min_id=0,
+    limit=math.inf,
+    fetch_matter_text=False
+):
     '''fetches events from the legistart api
 
     will start at `min_id` and continue until `limit`
     '''
-    url = EVENTS.format(min_id)
-    # max page size is 1000
-    # currently there are less than 3000 items so we can read everything in 3 pages
-    if limit < 1000:
-        url += f'&$top={limit}'
+    url = events_url(namespace, min_id, limit)
     omid = min_id
     response = request.urlopen(url)
     for event in json.load(response):
         limit -= 1
         # fetch event items
-        items = json.load(request.urlopen(ITEMS.format(event['EventId'])))
+        items = json.load(
+            request.urlopen(
+                items_url(namespace, event['EventId'])
+            )
+        )
         event['items'] = []
-        # some event items are just text, and are motions or discussion related to
-        # the previous item. So we keep track of the item and append to it's description
+        # some event items are just text, and are motions or discussion
+        # related to the previous item. So we keep track of the item and
+        # append to it's description
         item = None
         for item_ in items:
             if item_['EventItemAgendaNumber']:
                 if item:
                     event['items'].append(item)
                     item = None
-                if item_['EventItemAgendaNumber'][-1] == '.' or len(item_['EventItemAgendaNumber']) == 1:
+                if (
+                    item_['EventItemAgendaNumber'][-1] == '.' or
+                    '.' not in item_['EventItemAgendaNumber']
+                ):
                     # skip section titles
                     continue
                 item = add_item_data(item_)
-            elif item and (item_['EventItemActionText'] or item_['EventItemTitle']):
+            elif item and (
+                item_['EventItemActionText'] or item_['EventItemTitle']
+            ):
                 # any of these could be null
                 item['EventItemActionText'] = '\n'.join(filter(
                     None,
@@ -175,7 +243,8 @@ def data_from_db(connection):
     connection.row_factory = sqlite3.Row
     cursor = connection.cursor()
     cursor.execute('SELECT DISTINCT title FROM items')
-    items = {r[0].lower(): [] for r in cursor.fetchall() if r[0]}
+    items: Mapping[str, List[Mapping[str, Any]]] = {
+        r[0].lower(): [] for r in cursor.fetchall() if r[0]}
     cursor.execute('SELECT * FROM items WHERE title IS NOT NULL')
     for row in cursor.fetchall():
         items[row['title'].lower()].append({k: row[k] for k in row.keys()})
@@ -222,7 +291,7 @@ def insert_events(connection, events):
                     item['attachments'],
                     item['EventItemMatterStatus'],
                     item['EventItemMatterType'],
-                    item['text']
+                    item.get('text')
                 ) for item in event['items'])
             )
         if i:
@@ -233,9 +302,9 @@ def insert_events(connection, events):
         connection.commit()
 
 
-def fetch_bodies(connection):
+def fetch_bodies(namespace: str, connection):
     '''fetch and store meeting body data. city council is 138, etc'''
-    url = BASEURL + 'bodies?$select=BodyId,BodyName'
+    url = BASEURL + namespace + '/bodies?$select=BodyId,BodyName'
     bodies = json.load(request.urlopen(url))
     connection.cursor().executemany(
         'INSERT INTO bodies VALUES (?, ?)',
@@ -244,11 +313,19 @@ def fetch_bodies(connection):
     connection.commit()
 
 
-def fetch_more_events(limit=100, refetch_nonfinal=False):
+# COMMAND ENTRY POINTS #
+
+
+def fetch_more_events(
+    namespace: str,
+    limit=100,
+    refetch_nonfinal=False,
+):
     '''check the max event id from the db, and fetch `limit` more events'''
-    connection = sqlite3.connect('minutes.db')
+    connection = sqlite3.connect(f'{namespace}.db')
+    minid = None
     try:
-        cursor = connection.cursor();
+        cursor = connection.cursor()
         try:
             if refetch_nonfinal:
                 cursor.execute(
@@ -257,59 +334,69 @@ def fetch_more_events(limit=100, refetch_nonfinal=False):
                 )
             else:
                 cursor.execute('SELECT max(id) FROM events')
-            maxid, = cursor.fetchone()
+            minid, = cursor.fetchone()
         except sqlite3.OperationalError:
             # probably our first run
             create_tables(connection)
-            fetch_bodies(connection)
-            maxid = 0
-        print(f'fetching up to {limit} events, starting from {maxid}')
-        event_iter = fetch_events(min_id=maxid, limit=limit)
+            fetch_bodies(namespace, connection)
+
+        if minid is None:
+            minid = 0
+        print(f'fetching up to {limit} {namespace} events, minid {minid}')
+        event_iter = fetch_events(namespace, min_id=minid, limit=limit)
         insert_events(connection, event_iter)
     finally:
         connection.close()
 
 
-def reset():
+def reset(
+    namespace: str,
+):
     '''drop all tables and data. dangerous'''
-    connection = sqlite3.connect('minutes.db')
-    cursor = connection.cursor();
+    connection = sqlite3.connect(f'{namespace}.db')
+    cursor = connection.cursor()
     cursor.execute('DROP TABLE IF EXISTS events')
     cursor.execute('DROP TABLE IF EXISTS items')
     cursor.execute('DROP TABLE IF EXISTS bodies')
     create_tables(connection)
-    fetch_bodies(connection)
+    fetch_bodies(namespace, connection)
     connection.close()
 
 
-def db_to_template():
+def generate(
+    namespace: str,
+    outfile=None,
+):
     '''generate a all-in-one search webpage with our data embedded in
 
     Generated file is about 7.5M
     '''
-    connection = sqlite3.connect('minutes.db')
+    connection = sqlite3.connect(f'{namespace}.db')
+    if outfile is None:
+        outfile = f'{namespace}.html'
     items, events, bodies = data_from_db(connection)
-    with open('councildoc.html.template', 'r') as fob:
+    with open(TEMPLATE, 'r') as fob:
         html = (
             fob.read()
+            .replace('<%NAMESPACE%>', namespace)
             .replace('<%ITEMS%>', json.dumps(items))
             .replace('<%EVENTS%>', json.dumps(events))
             .replace('<%BODIES%>', json.dumps(bodies))
         )
-    with open('councildoc.html', 'w') as fob:
+    with open(outfile, 'w') as fob:
         fob.write(html)
 
 
+def parse_and_run(args=None):
+    args = vars(parser().parse_args())
+    func = args.pop('func')
+    command = args.pop('command')
+    try:
+        func(**args)
+    except Exception:
+        print(f'failed to run {command} with {args}', file=sys.stderr)
+        raise
+
+
 if __name__ == '__main__':
-    arg = sys.argv[1] if len(sys.argv) > 1 else 'fetch'
-    if arg == 'fetch':
-        limit = int(sys.argv[2]) if len(sys.argv) > 2 else 50
-        # assume any 3rd argument is "true". TODO: argparse
-        nonfinal = len(sys.argv) > 3
-        fetch_more_events(limit=limit, refetch_nonfinal=nonfinal)
-    elif arg == 'reset':
-        reset()
-    elif arg == 'generate':
-        db_to_template()
-    else:
-        print(__doc__)
+    parse_and_run()

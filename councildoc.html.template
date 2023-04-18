@@ -331,11 +331,13 @@ window.onload = () => {
 };
 
 </script>
+  <head>
+    <title>Councildoc <%NAMESPACE%> QuickSerarch</title>
   </head>
   <body>
     <div class="container">
       <header class="header">
-        <h1>Search Mountain View City Meeting Minutes</h1>
+        <h1>Search Meeting Minutes - <%NAMESPACE%></h1>
       </header>
       <div class="body" align="center">
         <div class="autoComplete_wrapper">
