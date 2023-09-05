@@ -7,3 +7,4 @@ calendars
 *.sw?
 *.pyc
 *.bak
+.*
