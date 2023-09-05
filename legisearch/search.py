@@ -387,7 +387,7 @@ def generate(
         fob.write(html)
 
 
-def parse_and_run(args=None):
+def parse_and_run():
     args = vars(parser().parse_args())
     func = args.pop('func')
     command = args.pop('command')
