@@ -1,7 +1,9 @@
+build
 minutes
 ocr_minutes
 minutes.html
 calendars
+*egg-info
 *.db
 *.html
 *.sw?

@@ -1,8 +1,14 @@
+These projects are built on top of the legistar api.
+
+[legistar api notes](legistar.md)
+  
+[exampl of the data you can get from the api](documentation/sanjose.json)
+
+## Legisearch
+
 fetched city meeting data from legistar and generates a single-page static html file for rapid searching through agenda item titles
 
-[legistar readme](legistar.md)
-
-example [here](http://www.jisaacstone.com/projects/councildoc.html)
+working example [here](http://www.jisaacstone.com/projects/councildoc.html)
 
 The main script is `legisearch`
 
@@ -19,6 +25,11 @@ known namespaces
 | mountainview | Mountain View, CA |
 | sunnyvaleca | Sunnyvale, CA |
 | santaclara | Santa Clara, CA |
+| sanjose | San Jose, CA |
 
 This was built for mountain view. Each city stores the data a bit differently.
 More work needs to be done to make it portable across cities.
+
+## Legiscal
+
+This will be a web server that generates ical feeds from legistar meeting body info

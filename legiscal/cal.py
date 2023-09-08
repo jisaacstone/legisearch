@@ -44,6 +44,14 @@ def events_url(
     return url
 
 
+def fetch_bodies(
+    namespace: str
+):
+    url = BASEURL + namespace + '/bodies?$select=BodyId,BodyName'
+    bodies = json.load(request.urlopen(url))
+    return {b['BodyName']: b['BodyId'] for b in bodies}
+
+
 def fetch_events(
     namespace: str,
     bodys
@@ -77,13 +85,13 @@ def event_to_ical(event, tzinfo):
 def gen_ical(
     namespace='mountainview',
     timezone='America/Los_Angeles',
-    bodys=None
+    bodies=None
 ):
     cal = Calendar()
     # cal.add('tzid', timezone)
-    cal.add('procid', f'-//legiscal/{namespace}//')
+    cal.add('procid', f'-//legiscal/{namespace}-{",".join(bodies)}//')
     tzinfo = ZoneInfo(timezone)
-    for event in fetch_events(namespace, bodys):
+    for event in fetch_events(namespace, bodies):
         evt = event_to_ical(event, tzinfo)
         cal.add_component(evt)
     return cal

@@ -7,71 +7,9 @@ import json
 import math
 import sqlite3
 import argparse
+from legisearch.query import fetch_events, fetch_bodies
 
-# Legistar web api is documented here
-# http://webapi.legistar.com/Help
-# Documentation is sparse, but reading the odata spec + trial and error works
-# I was not able to get the odata batch operations to work, I think it might
-# be because only GET requests are allowed
-# {client} in the documentation refers to "mountainview" in our case
-# "Events" are meetings
-# "EventItem" is a thing that happened at a meeting, could be agendized items
-# or just random text like "PAGE BREAK"
-# "Matters" are things the meeting body discusses or votes on
-# see legistar.md for more details
-BASEURL = 'https://webapi.legistar.com/v1/'
-EVENTFIELDS = (
-    'EventId',
-    'EventBodyId',
-    'EventDate',
-    'EventTime',
-    'EventAgendaFile',
-    'EventMinutesFile',
-    'EventMinutesStatusId',
-    'EventInSiteURL')
-ITEMFIELDS = (
-    'EventItemId',
-    'EventItemAgendaNumber',
-    'EventItemActionText',
-    'EventItemTitle',
-    'EventItemMatterId',
-    'EventItemMatterAttachments/MatterAttachmentName',
-    'EventItemMatterAttachments/MatterAttachmentHyperlink',
-    'EventItemMatterStatus',
-    'EventItemMatterType')
 TEMPLATE = 'councildoc.html.template'
-FINALSTATUS = 10  # for re-downloading non-final events
-
-
-def events_url(
-    namespace: str,
-    min_id: int = 0,
-    limit: int = 1000,
-) -> str:
-    '''An assumption here is that event_id always increases'''
-    fields = ','.join(EVENTFIELDS)
-    url = (
-        f'{BASEURL}{namespace}/events?' +
-        f'$orderby=EventId&$select={fields}&' +
-        f'$filter=EventAgendaFile+ne+null+and+EventId+gt+{min_id}'
-    )
-    if limit and limit < 1000:
-        url += f'&$top={limit}'
-    return url
-
-
-def items_url(namespace: str, event_id: int) -> str:
-    ''' The data can sometimes be messy, the observed order is
-    EventItemMintuesSequence but sometimes this value is null.
-    '''
-    fields = ','.join(ITEMFIELDS)
-    url = (
-        f'{BASEURL}{namespace}/events/{event_id}/eventitems?' +
-        'AgendaNote=1&MinutesNote=1&Attachments=1&' +
-        f'$expand=EventItemMatterAttachments&$select={fields}&' +
-        '&$orderby=EventItemMinutesSequence,EventItemAgendaSequence'
-    )
-    return url
 
 
 def parser() -> argparse.ArgumentParser:
@@ -130,75 +68,6 @@ def parser() -> argparse.ArgumentParser:
     )
     generate_parser.set_defaults(func=generate)
     return root_parser
-
-
-def add_item_data(item):
-    # sqlite supports json, but the python stdlib doesn't interface easily
-    # so I just store as text, and use JSON.parse on the frontend
-    item['attachments'] = json.dumps(
-        {m['MatterAttachmentName']: m['MatterAttachmentHyperlink']
-         for m in item.pop('EventItemMatterAttachments')}
-    )
-    return item
-
-
-def fetch_events(
-    namespace: str,
-    min_id=0,
-    limit=math.inf,
-    fetch_matter_text=False
-):
-    '''fetches events from the legistart api
-
-    will start at `min_id` and continue until `limit`
-    '''
-    url = events_url(namespace, min_id, limit)
-    omid = min_id
-    response = request.urlopen(url)
-    for event in json.load(response):
-        limit -= 1
-        # fetch event items
-        items = json.load(
-            request.urlopen(
-                items_url(namespace, event['EventId'])
-            )
-        )
-        event['items'] = []
-        # some event items are just text, and are motions or discussion
-        # related to the previous item. So we keep track of the item and
-        # append to it's description
-        item = None
-        for item_ in items:
-            if item_['EventItemAgendaNumber']:
-                if item:
-                    event['items'].append(item)
-                    item = None
-                if (
-                    item_['EventItemAgendaNumber'][-1] == '.' or
-                    '.' not in item_['EventItemAgendaNumber']
-                ):
-                    # skip section titles
-                    continue
-                item = add_item_data(item_)
-            elif item and (
-                item_['EventItemActionText'] or item_['EventItemTitle']
-            ):
-                # any of these could be null
-                item['EventItemActionText'] = '\n'.join(filter(
-                    None,
-                    (
-                        item['EventItemActionText'],
-                        item_['EventItemTitle'],
-                        item_['EventItemActionText']
-                    )
-                ))
-        if item:
-            event['items'].append(item)
-
-        min_id = event['EventId']
-        yield event
-    if limit and min_id != omid:
-        yield from fetch_events(min_id, limit)
 
 
 def create_tables(connection):
@@ -302,10 +171,8 @@ def insert_events(connection, events):
         connection.commit()
 
 
-def fetch_bodies(namespace: str, connection):
-    '''fetch and store meeting body data. city council is 138, etc'''
-    url = BASEURL + namespace + '/bodies?$select=BodyId,BodyName'
-    bodies = json.load(request.urlopen(url))
+def fetch_and_insert_bodies(namespace: str, connection):
+    bodies = fetch_bodies(namespace)
     connection.cursor().executemany(
         'INSERT INTO bodies VALUES (?, ?)',
         ((b['BodyId'], b['BodyName']) for b in bodies)
@@ -359,7 +226,7 @@ def reset(
     cursor.execute('DROP TABLE IF EXISTS items')
     cursor.execute('DROP TABLE IF EXISTS bodies')
     create_tables(connection)
-    fetch_bodies(namespace, connection)
+    fetch_and_insert_bodies(namespace, connection)
     connection.close()
 
 
