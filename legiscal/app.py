@@ -1,6 +1,4 @@
-import json
-import urllib
-from flask import Flask, request, Response, render_template
+from flask import Flask, request, Response, render_template, jsonify
 from legiscal.cal import gen_ical, fetch_bodies
 
 app = Flask(__name__)
@@ -24,10 +22,13 @@ def root():
 
 @app.route('/b/<namespace>')
 def bodies(namespace):
+    bodies = fetch_bodies(namespace)
+    if 'application/json' in request.headers['Accept']:
+        return jsonify(bodies)
     return render_template(
         'bodies.html',
         namespace=namespace,
-        bodies=fetch_bodies(namespace)
+        bodies=bodies
     )
 
 
