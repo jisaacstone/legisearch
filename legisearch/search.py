@@ -7,7 +7,7 @@ import json
 import math
 import sqlite3
 import argparse
-from legisearch.query import fetch_events, fetch_bodies
+from legisearch.query import fetch_events, fetch_bodies, filter_events
 
 TEMPLATE = 'councildoc.html.template'
 
@@ -210,7 +210,7 @@ def fetch_more_events(
         if minid is None:
             minid = 0
         print(f'fetching up to {limit} {namespace} events, minid {minid}')
-        event_iter = fetch_events(namespace, min_id=minid, limit=limit)
+        event_iter = filter_events(fetch_events(namespace, min_id=minid, limit=limit))
         insert_events(connection, event_iter)
     finally:
         connection.close()

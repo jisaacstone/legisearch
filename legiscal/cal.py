@@ -9,9 +9,9 @@ import argparse
 import json
 import sys
 from icalendar import Calendar, Event
+from legisearch import query
 
 
-BASEURL = 'https://webapi.legistar.com/v1/'
 EVENTFIELDS = (
     'EventId',
     'EventDate',
@@ -25,47 +25,51 @@ EVENTFIELDS = (
     'EventInSiteURL')
 DESC = '''Meeting of {EventBodyName}
 {EventTime} at {EventLocation}
-{EventAgendaStatusName} Agenda: {EventAgendaFile}
+Agenda: {EventAgendaFile}
 Web Link: {EventInSiteURL}
+
+{items}
 '''
-
-
-def events_url(
-    namespace: str,
-) -> str:
-    fields = ','.join(EVENTFIELDS)
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
-    url = (
-        f'{BASEURL}{namespace}/events?' +
-        f'$orderby=EventDate&$select={fields}&' +
-        '$filter=EventAgendaFile+ne+null+' +
-        f"and+EventDate+gt+datetime'{yesterday}'"
-    )
-    return url
 
 
 def fetch_bodies(
     namespace: str
 ):
-    url = BASEURL + namespace + '/bodies?$select=BodyId,BodyName'
-    bodies = json.load(request.urlopen(url))
+    bodies = query.fetch_bodies(namespace)
     return {b['BodyName']: b['BodyId'] for b in bodies}
 
 
-def fetch_events(
+async def fetch_events(
     namespace: str,
-    bodys
+    bodies=[]
 ):
-    url = events_url(namespace)
-    response = request.urlopen(url)
-    for event in json.load(response):
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    filter = f"EventAgendaFile ne null and EventDate gt datetime'{yesterday}'"
+    events = query.fetch_events(namespace, filter=filter, fields=EVENTFIELDS)
+    async for event, items in events:
         # "IN" operator not supported in odata3, so we do in code
-        if bodys and str(event['EventBodyId']) not in bodys:
+        if bodies and str(event['EventBodyId']) not in bodies:
             continue
+        event['items'] = extract_items(items)
         yield event
 
 
+def extract_items(items):
+    text = ''
+    for item in items:
+        if item.get('EventItemTitle'):
+            text += item['EventItemTitle'] + '\n'
+        if item.get('EventItemMatterAttachments'):
+            for a in item['EventItemMatterAttachments']:
+                text += a['MatterAttachmentName'] + a['MatterAttachmentHyperlink'] + '\n'
+    return text
+
+
 def event_to_ical(event, tzinfo):
+    if 'EventLocation' not in event:
+        event['EventLocation'] = 'Unknown'
+    if 'EventBodyName' not in event:
+        event['EventBodyName'] = str(event['EventBodyId'])
     date = datetime.fromisoformat(event['EventDate'])
     time = parse(event['EventTime'])
     dt = datetime.combine(date.date(), time.time(), tzinfo=tzinfo)
@@ -75,14 +79,15 @@ def event_to_ical(event, tzinfo):
     # How long are the meetings? It is unknown. Assume 2 hours?
     evt.add('dtend', dt + timedelta(hours=2))
     evt.add('summary', event['EventBodyName'] + ' Meeting')
-    evt.add('location', event['EventLocation'])
+    evt.add('location', event.get('EventLocation', ''))
     evt.add('description', DESC.format_map(event))
-    evt.add('last-modified',
-            parse(event['EventLastModifiedUtc']).replace(tzinfo=tzutc()))
+    if event.get('EventLastModifiedUtc'):
+        evt.add('last-modified',
+                parse(event['EventLastModifiedUtc']).replace(tzinfo=tzutc()))
     return evt
 
 
-def gen_ical(
+async def gen_ical(
     namespace='mountainview',
     timezone='America/Los_Angeles',
     bodies=None
@@ -91,7 +96,7 @@ def gen_ical(
     # cal.add('tzid', timezone)
     cal.add('procid', f'-//legiscal/{namespace}-{",".join(bodies)}//')
     tzinfo = ZoneInfo(timezone)
-    for event in fetch_events(namespace, bodies):
+    async for event in fetch_events(namespace, bodies):
         evt = event_to_ical(event, tzinfo)
         cal.add_component(evt)
     return cal
@@ -118,17 +123,21 @@ def parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '-b', '--bodyid',
         help='only show selected meeting body events',
-        nargs='*'
+        nargs='*',
+        default=[]
     )
     return parser
 
 
-def main(args=None):
+async def main(args=None):
     if args is None:
         args = sys.argv[1:]
     cmd = parser().parse_args(args)
-    print(gen_ical(cmd.namespace, cmd.timezone, cmd.bodyid).to_ical().decode('utf8'))
+    cal = await gen_ical(cmd.namespace, cmd.timezone, cmd.bodyid)
+    return cal.to_ical().decode('utf8')
 
 
 if __name__ == '__main__':
-    main()
+    import asyncio
+    coroutine = main()
+    print(asyncio.run(coroutine))

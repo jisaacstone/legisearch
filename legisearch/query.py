@@ -1,8 +1,10 @@
-from typing import Mapping, List, Any
+from typing import Mapping, List, Any, Tuple
 from urllib import request
 import sys
 import json
 import math
+import asyncio
+import httpx
 import sqlite3
 import argparse
 
@@ -48,21 +50,22 @@ def events_url(
     namespace: str,
     min_id: int = 0,
     limit: int = 1000,
-) -> str:
+    fields=EVENTFIELDS,
+) -> Tuple[str, Mapping]:
     '''An assumption here is that event_id always increases'''
-    fields = ','.join(EVENTFIELDS)
-    url = (
-        f'{BASEURL}{namespace}/events?' +
-        f'$orderby=EventId&' +
-        #f'$select={fields}&' +
-        f'$filter=EventAgendaFile+ne+null+and+EventId+gt+{min_id}'
-    )
+    url = f'{BASEURL}{namespace}/events?'
+    params = {
+        '$orderby': 'EventId',
+        '$select': ','.join(fields),
+        '$filter': f'EventAgendaFile ne null and EventId gt {min_id}'
+    }
     if limit and limit < 1000:
-        url += f'&$top={limit}'
-    return url
+        params['$top'] = limit
+
+    return url, params
 
 
-def items_url(namespace: str, event_id: int) -> str:
+def items_url(namespace: str, event_id: int) -> Tuple[str, Mapping]:
     ''' The data can sometimes be messy, the observed order is
     EventItemMintuesSequence but sometimes this value is null.
     '''
@@ -70,73 +73,102 @@ def items_url(namespace: str, event_id: int) -> str:
     # `$expand` is not supported for all relations, but the queries are much faster
     # If you can use it. It only seems to work if the expand field is also
     # explicitly included in the `$select`
-    url = (
-        f'{BASEURL}{namespace}/events/{event_id}/eventitems?' +
-        'AgendaNote=1&MinutesNote=1&Attachments=1&' +
-        # f'$expand=EventItemMatterAttachments&$select={fields}&' +
-        '$orderby=EventItemMinutesSequence,EventItemAgendaSequence'
-    )
-    return url
+    url = f'{BASEURL}{namespace}/events/{event_id}/eventitems'
+    params = {
+        'AgendaNote': '1',
+        'MinutesNote': '1',
+        'Attachments': '1',
+        '$expand': 'EventItemMatterAttachments',
+        '$select': ','.join(ITEMFIELDS),
+        '$orderby': 'EventItemMinutesSequence,EventItemAgendaSequence'
+    }
+    return url, params
 
 
-def fetch_events(
+async def fetch_events(
     namespace: str,
     min_id=0,
     limit=math.inf,
-    fetch_matter_text=False
+    fields=EVENTFIELDS,
+    filter=''
 ):
     '''fetches events from the legistart api
 
     will start at `min_id` and continue until `limit`
     '''
-    url = events_url(namespace, min_id, limit)
-    omid = min_id
-    response = request.urlopen(url)
-    for event in json.load(response):
-        limit -= 1
-        # fetch event items
-        items = json.load(
-            request.urlopen(
-                items_url(namespace, event['EventId'])
-            )
-        )
-        event['items'] = []
-        # some event items are just text, and are motions or discussion
-        # related to the previous item. So we keep track of the item and
-        # append to it's description
-        item = None
-        for item_ in items:
-            if item_['EventItemAgendaNumber']:
-                if item:
-                    event['items'].append(item)
-                    item = None
-                if (
-                    item_['EventItemAgendaNumber'][-1] == '.' or
-                    '.' not in item_['EventItemAgendaNumber']
-                ):
-                    # skip section titles
-                    continue
-                item = add_item_data(item_)
-                add_matter_data(namespace, item)
-            elif item and (
-                item_['EventItemActionText'] or item_['EventItemTitle']
-            ):
-                # any of these could be null
-                item['EventItemActionText'] = '\n'.join(filter(
-                    None,
-                    (
-                        item['EventItemActionText'],
-                        item_['EventItemTitle'],
-                        item_['EventItemActionText']
-                    )
-                ))
-        if item:
-            event['items'].append(item)
+    async with httpx.AsyncClient() as client:
+        url, params = events_url(namespace, min_id, limit, fields)
+        if filter:
+            params['$filter'] += ' and ' + filter
+        omid = min_id
+        response = await client.get(url, params=params)
+        events = response.json()
+        futures = []
+        try:
+            for event in events:
+                # fetch event items
+                iurl, iparams = items_url(namespace, event['EventId'])
+                futures.append(client.get(iurl, params=iparams))
+        except TypeError:
+            if 'StackTrace' in events:
+                raise Exception(f'call to {url} with {params} failed: {events}')
+            else:
+                raise
 
-        min_id = event['EventId']
-        yield event
+        for event, item_resp in zip(events, await asyncio.gather(*futures)):
+            limit -= 1
+            yield (event, item_resp.json())
+
     if limit and min_id != omid:
-        yield from fetch_events(min_id, limit)
+        async for event in fetch_events(min_id, limit):
+            yield event
+
+
+def filter_events(
+    namespace,
+    event,
+    items,
+    fetch_matter_text=False,
+    fetch_item_extra=False,
+):
+    print(event['EventId'], items)
+    event['items'] = []
+    # some event items are just text, and are motions or discussion
+    # related to the previous item. So we keep track of the item and
+    # append to it's description
+    item = None
+    for item_ in items:
+        if item_['EventItemAgendaNumber']:
+            if item:
+                event['items'].append(item)
+                item = None
+            if (
+                item_['EventItemAgendaNumber'][-1] == '.' or
+                '.' not in item_['EventItemAgendaNumber']
+            ):
+                # skip section titles
+                continue
+            if fetch_item_extra:
+                item = add_item_data(item_)
+            if fetch_matter_text:
+                add_matter_data(namespace, item)
+        elif item and (
+            item_['EventItemActionText'] or item_['EventItemTitle']
+        ):
+            # any of these could be null
+            item['EventItemActionText'] = '\n'.join(filter(
+                None,
+                (
+                    item['EventItemActionText'],
+                    item_['EventItemTitle'],
+                    item_['EventItemActionText']
+                )
+            ))
+    if item:
+        event['items'].append(item)
+
+    min_id = event['EventId']
+    yield event
 
 
 def add_item_data(item):
@@ -179,5 +211,7 @@ if __name__ == '__main__':
         limit = int(sys.argv[2])
     else:
         limit = 10
-    events = list(fetch_events(namespace, limit=limit))
-    print(json.dumps(events, indent=2))
+    async def fetch():
+        events = [e async for e in fetch_events(namespace, limit=limit)]
+        print(json.dumps(events, indent=2))
+    asyncio.run(fetch())
