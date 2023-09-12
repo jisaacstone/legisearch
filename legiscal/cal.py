@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+from typing import Mapping, AsyncGenerator
 from urllib import request
 from datetime import date, timedelta, datetime
 from dateutil.parser import parse
@@ -34,7 +35,7 @@ Web Link: {EventInSiteURL}
 
 def fetch_bodies(
     namespace: str
-):
+) -> Mapping[str, int]:
     bodies = query.fetch_bodies(namespace)
     return {b['BodyName']: b['BodyId'] for b in bodies}
 
@@ -42,10 +43,10 @@ def fetch_bodies(
 async def fetch_events(
     namespace: str,
     bodies=[]
-):
+) -> AsyncGenerator[Mapping[str, any], None]:
     yesterday = (date.today() - timedelta(days=1)).isoformat()
-    filter = f"EventAgendaFile ne null and EventDate gt datetime'{yesterday}'"
-    events = query.fetch_events(namespace, filter=filter, fields=EVENTFIELDS)
+    filter_ = f"EventAgendaFile ne null and EventDate gt datetime'{yesterday}'"
+    events = query.fetch_events(namespace, filter=filter_, fields=EVENTFIELDS)
     async for event, items in events:
         # "IN" operator not supported in odata3, so we do in code
         if bodies and str(event['EventBodyId']) not in bodies:
@@ -54,15 +55,16 @@ async def fetch_events(
         yield event
 
 
-def extract_items(items):
-    text = ''
+def extract_items(items: Mapping[str, any]) -> str:
+    '''reconstruct an agenda from the event items'''
+    text = []
     for item in items:
         if item.get('EventItemTitle'):
-            text += item['EventItemTitle'] + '\n'
+            text.append(item['EventItemTitle'])
         if item.get('EventItemMatterAttachments'):
             for a in item['EventItemMatterAttachments']:
-                text += a['MatterAttachmentName'] + a['MatterAttachmentHyperlink'] + '\n'
-    return text
+                text.append(f"{a['MatterAttachmentName']} {a['MatterAttachmentHyperlink']}")
+    return '\n'.join(text)
 
 
 def event_to_ical(event, tzinfo):
