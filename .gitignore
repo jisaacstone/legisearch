@@ -5,7 +5,7 @@ minutes.html
 calendars
 *egg-info
 *.db
-*.html
+councildoc.html
 *.sw?
 *.pyc
 *.bak
