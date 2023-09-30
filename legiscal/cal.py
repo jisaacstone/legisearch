@@ -47,7 +47,7 @@ async def fetch_bodies(
             fields=('EventBodyId', 'EventBodyName')
         )
         bodycount = Counter([(e['EventBodyName'], e['EventBodyId']) async for e in events])
-    return {k[0]: {'name': k[1], 'count': v} for k, v in sorted(bodycount.items())}
+    return {k[0]: {'id': k[1], 'count': v} for k, v in sorted(bodycount.items())}
 
 
 async def fetch_events(
