@@ -57,7 +57,6 @@ def events_url(
     params = {
         '$orderby': 'EventId',
         '$select': ','.join(fields),
-        '$filter': f'EventAgendaFile ne null and EventId gt {min_id}'
     }
     if limit and limit < 1000:
         params['$top'] = limit
@@ -85,43 +84,63 @@ def items_url(namespace: str, event_id: int) -> Tuple[str, Mapping]:
     return url, params
 
 
-async def fetch_events(
+async def fetch_event_items(
     namespace: str,
     min_id=0,
     limit=math.inf,
     fields=EVENTFIELDS,
-    filter=''
+    filter_='EventAgendaFile ne null',
+):
+    async with httpx.AsyncClient() as client:
+        event_gen = fetch_events(client, namespace, min_id, limit, fields, filter_)
+        async for event, item in fetch_items(client, namespace, event_gen):
+            yield event, item
+
+
+async def fetch_events(
+    client: httpx.AsyncClient,
+    namespace: str,
+    min_id=0,
+    limit=math.inf,
+    fields=EVENTFIELDS,
+    filter_='EventAgendaFile ne null',
 ):
     '''fetches events from the legistart api
 
     will start at `min_id` and continue until `limit`
     '''
-    async with httpx.AsyncClient() as client:
-        url, params = events_url(namespace, min_id, limit, fields)
-        if filter:
-            params['$filter'] += ' and ' + filter
-        omid = min_id
-        response = await client.get(url, params=params)
-        events = response.json()
-        futures = []
-        try:
-            for event in events:
-                # fetch event items
-                iurl, iparams = items_url(namespace, event['EventId'])
-                futures.append(client.get(iurl, params=iparams))
-        except TypeError:
-            if 'StackTrace' in events:
-                raise Exception(f'call to {url} with {params} failed: {events}')
-            else:
-                raise
-
-        for event, item_resp in zip(events, await asyncio.gather(*futures)):
-            limit -= 1
-            yield (event, item_resp.json())
+    if min_id:
+        filter_ += f' and EventId gt {min_id}'
+    url, params = events_url(namespace, min_id, limit, fields)
+    if filter_:
+        params['$filter'] = filter_
+    omid = min_id
+    response = await client.get(url, params=params)
+    events = response.json()
+    for event in events:
+        limit -= 1
+        yield event
 
     if limit and min_id != omid:
         async for event in fetch_events(min_id, limit):
             yield event
+
+
+async def fetch_items(
+    client: httpx.AsyncClient,
+    namespace: str,
+    event_gen
+):
+    futures = []
+    events = []
+    async for event in event_gen:
+        events.append(event)
+        # fetch event items
+        iurl, iparams = items_url(namespace, event['EventId'])
+        futures.append(client.get(iurl, params=iparams))
+
+    for event, item_resp in zip(events, await asyncio.gather(*futures)):
+        yield (event, item_resp.json())
 
 
 def filter_events(

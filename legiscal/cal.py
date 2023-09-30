@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from typing import Mapping, AsyncGenerator
+from collections import Counter
 from urllib import request
 from datetime import date, timedelta, datetime
 from dateutil.parser import parse
@@ -9,6 +10,7 @@ from zoneinfo import ZoneInfo
 import argparse
 import json
 import sys
+import httpx
 from icalendar import Calendar, Event
 from legisearch import query
 
@@ -33,11 +35,19 @@ Web Link: {EventInSiteURL}
 '''
 
 
-def fetch_bodies(
+async def fetch_bodies(
     namespace: str
 ) -> Mapping[str, int]:
-    bodies = query.fetch_bodies(namespace)
-    return {b['BodyName']: b['BodyId'] for b in bodies}
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    async with httpx.AsyncClient() as client:
+        events = query.fetch_events(
+            client,
+            namespace,
+            filter_=f"EventDate gt datetime'{yesterday}'",
+            fields=('EventBodyId', 'EventBodyName')
+        )
+        bodycount = Counter([(e['EventBodyName'], e['EventBodyId']) async for e in events])
+    return {k[0]: {'name': k[1], 'count': v} for k, v in sorted(bodycount.items())}
 
 
 async def fetch_events(
@@ -46,7 +56,7 @@ async def fetch_events(
 ) -> AsyncGenerator[Mapping[str, any], None]:
     yesterday = (date.today() - timedelta(days=1)).isoformat()
     filter_ = f"EventAgendaFile ne null and EventDate gt datetime'{yesterday}'"
-    events = query.fetch_events(namespace, filter=filter_, fields=EVENTFIELDS)
+    events = query.fetch_event_items(namespace, filter_=filter_, fields=EVENTFIELDS)
     async for event, items in events:
         # "IN" operator not supported in odata3, so we do in code
         if bodies and str(event['EventBodyId']) not in bodies:
