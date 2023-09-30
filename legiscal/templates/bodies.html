@@ -1,0 +1,11 @@
+<!doctype html>
+<title>{{ namespace }} Meeting Bodies</title>
+<a href="/c/{{namespace}}">calendar for all meeting bodies</a>
+<nav>
+  <h1>Meeting Bodies</h1>
+  <ul>
+    {% for name, id in bodies.items() %}
+    <li><a href="/c/{{namespace}}?b={{id}}">{{name}}</a>
+    {% endfor %}
+  </ul>
+</nav>

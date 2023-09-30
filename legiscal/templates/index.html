@@ -1,0 +1,15 @@
+<!doctype html>
+<title>subsribable calendar for local city council and advisory body meetings</title>
+<p>This app creates calender feeds from cities using the legistar platform
+<p>The calender is populated with upcoming meetings as soon as the agenda is posted.
+The meeting description will contain the agenda and all relevant links.
+<p>These cities in Santa Clara County all use legistar:
+<ul>
+{% for city, namespace in known_namespaces.items() %}
+  <li>
+    <h4>{{ city }}</h4>
+    <a href="/b/{{ namespace }}">Meeting Bodies</a>
+    <a href="/c/{{ namespace }}">Calendar</a>
+  </li>
+{% endfor %}
+</ul>

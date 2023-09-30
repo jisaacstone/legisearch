@@ -1,3 +1,4 @@
+from functools import partial
 from flask import Flask, request, Response, render_template, jsonify
 from legiscal.cal import gen_ical, fetch_bodies
 
@@ -9,7 +10,14 @@ known_namespaces = {
     'Santa Clara': 'santaclara',
     'Mountain View': 'mountainview',
     'Cupertino': 'cupertino',
+    'BART': 'bart',
 }
+
+
+@app.route('/test')
+def test():
+    options = ('text/calendar', 'text/html')
+    return request.accept_mimetypes.best_match(options)
 
 
 @app.route('/')
@@ -23,13 +31,16 @@ def root():
 @app.route('/b/<namespace>')
 def bodies(namespace):
     bodies = fetch_bodies(namespace)
-    if 'application/json' in request.headers['Accept']:
-        return jsonify(bodies)
-    return render_template(
-        'bodies.html',
-        namespace=namespace,
-        bodies=bodies
+    renderers = {
+        'application/json': jsonify,
+        'text/html': lambda b: render_template(
+            'bodies.html', namespace=namespace, bodies=b
+        )
+    }
+    renderer = request.accept_mimetypes.best_match(
+        ('application/json', 'text/html')
     )
+    return renderer(bodies)
 
 
 @app.route('/c/<namespace>')
