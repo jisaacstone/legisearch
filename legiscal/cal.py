@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import Mapping, AsyncGenerator
+from typing import Mapping, AsyncGenerator, List
 from collections import Counter
 from urllib import request
 from datetime import date, timedelta, datetime
@@ -8,7 +8,6 @@ from dateutil.parser import parse
 from dateutil.tz import tzutc
 from zoneinfo import ZoneInfo
 import argparse
-import json
 import sys
 import httpx
 from icalendar import Calendar, Event
@@ -67,13 +66,14 @@ async def fetch_events(
 
 def extract_items(items: Mapping[str, any]) -> str:
     '''reconstruct an agenda from the event items'''
-    text = []
+    text: List[str] = []
     for item in items:
         if item.get('EventItemTitle'):
-            text.append(item['EventItemTitle'])
+            text.append(str(item['EventItemTitle']))
         if item.get('EventItemMatterAttachments'):
             for a in item['EventItemMatterAttachments']:
-                text.append(f"{a['MatterAttachmentName']} {a['MatterAttachmentHyperlink']}")
+                text.append(f"{a['MatterAttachmentName']} "
+                            f"{a['MatterAttachmentHyperlink']}")
     return '\n'.join(text)
 
 
@@ -105,12 +105,17 @@ async def gen_ical(
     bodies=None
 ):
     cal = Calendar()
-    # cal.add('tzid', timezone)
-    cal.add('procid', f'-//legiscal/{namespace}-{",".join(bodies)}//')
     tzinfo = ZoneInfo(timezone)
+    subtitle = ','.join(bodies) if bodies and len(bodies) > 2 else ''
     async for event in fetch_events(namespace, bodies):
+        if not subtitle and bodies:
+            subtitle = event['EventBodyName']
         evt = event_to_ical(event, tzinfo)
         cal.add_component(evt)
+    # cal.add('tzid', timezone)
+    calname = f'{namespace}-{subtitle}' if subtitle else namespace
+    cal.add('procid', f'-//legiscal/{calname}//en')
+    cal.add('X-WR-CALNAME', calname)
     return cal
 
 

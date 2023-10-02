@@ -26,6 +26,7 @@ known namespaces
 | sunnyvaleca | Sunnyvale, CA |
 | santaclara | Santa Clara, CA |
 | sanjose | San Jose, CA |
+| bart | BART |
 
 This was built for mountain view. Each city stores the data a bit differently.
 More work needs to be done to make it portable across cities.
