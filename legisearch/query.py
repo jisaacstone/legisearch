@@ -1,12 +1,10 @@
-from typing import Mapping, List, Any, Tuple
+from typing import Mapping, Tuple
 from urllib import request
 import sys
 import json
 import math
 import asyncio
 import httpx
-import sqlite3
-import argparse
 
 
 # Legistar web api is documented here
@@ -51,7 +49,7 @@ def events_url(
     min_id: int = 0,
     limit: int = 1000,
     fields=EVENTFIELDS,
-) -> Tuple[str, Mapping]:
+) -> Tuple[str, Mapping[str, str]]:
     '''An assumption here is that event_id always increases'''
     url = f'{BASEURL}{namespace}/events?'
     params = {
@@ -59,7 +57,7 @@ def events_url(
         '$select': ','.join(fields),
     }
     if limit and limit < 1000:
-        params['$top'] = limit
+        params['$top'] = str(limit)
 
     return url, params
 
@@ -68,8 +66,7 @@ def items_url(namespace: str, event_id: int) -> Tuple[str, Mapping]:
     ''' The data can sometimes be messy, the observed order is
     EventItemMintuesSequence but sometimes this value is null.
     '''
-    fields = ','.join(ITEMFIELDS)
-    # `$expand` is not supported for all relations, but the queries are much faster
+    # `$expand` is not supported for all relations, but the queries are faster
     # If you can use it. It only seems to work if the expand field is also
     # explicitly included in the `$select`
     url = f'{BASEURL}{namespace}/events/{event_id}/eventitems'
@@ -92,8 +89,12 @@ async def fetch_event_items(
     filter_='EventAgendaFile ne null',
 ):
     async with httpx.AsyncClient() as client:
-        event_gen = fetch_events(client, namespace, min_id, limit, fields, filter_)
-        async for event, item in fetch_items(client, namespace, event_gen):
+        event_gen = fetch_events(
+            client, namespace, min_id, limit, fields, filter_
+        )
+        async for event, item in fetch_items(
+            client, namespace, event_gen
+        ):
             yield event, item
 
 
@@ -133,7 +134,11 @@ async def fetch_items(
 ):
     futures = []
     events = []
+    noitemevents = []
     async for event in event_gen:
+        if not event['EventAgendaFile']:
+            noitemevents.append(event)
+            continue
         events.append(event)
         # fetch event items
         iurl, iparams = items_url(namespace, event['EventId'])
@@ -141,6 +146,8 @@ async def fetch_items(
 
     for event, item_resp in zip(events, await asyncio.gather(*futures)):
         yield (event, item_resp.json())
+    for event in noitemevents:
+        yield (event, [])
 
 
 def filter_events(
@@ -186,7 +193,6 @@ def filter_events(
     if item:
         event['items'].append(item)
 
-    min_id = event['EventId']
     yield event
 
 
@@ -198,7 +204,7 @@ def add_item_data(item):
          for m in item.pop('EventItemMatterAttachments')}
     )
     for subcat in ['Votes', 'RollCalls']:
-        url = BASEURL + namespace + f'/EventItems/{item["EventItemId"]}/{subcat}'
+        url = f'{BASEURL}{namespace}/EventItems/{item["EventItemId"]}/{subcat}'
         data = json.load(request.urlopen(url))
         item[subcat] = data
     return item
@@ -206,12 +212,15 @@ def add_item_data(item):
 
 def add_matter_data(namespace: str, item):
     mid = item['EventItemMatterId']
+    subcats = [
+        'CodeSections', 'Histories', 'Versions', 'Sponsors', 'Attachments'
+    ]
     if mid:
         url = BASEURL + namespace + f'/Matters/{mid}'
         data = json.load(request.urlopen(url))
         item['Matter'] = data
-        for subcat in ['CodeSections', 'Histories', 'Versions', 'Sponsors', 'Attachments']:
-            url = BASEURL + namespace + f'/Matters/{mid}/{subcat}'
+        for subcat in subcats:
+            url = '{BASEURL}{namespace}/Matters/{mid}/{subcat}'
             data = json.load(request.urlopen(url))
             item[subcat] = data
 
@@ -224,13 +233,15 @@ def fetch_bodies(namespace: str):
 
 
 if __name__ == '__main__':
-    from pprint import pprint
     namespace = sys.argv[1]
     if len(sys.argv) > 2:
         limit = int(sys.argv[2])
     else:
         limit = 10
+
     async def fetch():
-        events = [e async for e in fetch_events(namespace, limit=limit)]
+        events = [e async for e in fetch_event_items(
+            namespace, limit=limit
+        )]
         print(json.dumps(events, indent=2))
     asyncio.run(fetch())
