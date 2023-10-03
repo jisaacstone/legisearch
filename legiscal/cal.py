@@ -119,7 +119,7 @@ async def gen_ical(
         cal.add_component(evt)
     # cal.add('tzid', timezone)
     if bodynames:
-        subtitle = ', '.join(bodynames)
+        subtitle = ', '.join(bodynames.values())
     desc = describe(namespace, sorted(bodynames.values()))
     calname = f'{namespace}-{subtitle}' if bodynames else namespace
     cal.add('prodid', f'-//legiscal/{calname}//en')
