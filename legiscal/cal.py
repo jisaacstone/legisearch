@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from typing import Mapping, AsyncGenerator, List
+from typing import Mapping, AsyncGenerator, List, Any
 from collections import Counter
-from urllib import request
 from datetime import date, timedelta, datetime
 from dateutil.parser import parse
 from dateutil.tz import tzutc
@@ -48,26 +47,35 @@ async def fetch_bodies(
             filter_=f"EventDate gt datetime'{yesterday}'",
             fields=('EventBodyId', 'EventBodyName')
         )
-        bodycount = Counter([(e['EventBodyName'], e['EventBodyId']) async for e in events])
-    return {k[0]: {'id': k[1], 'count': v} for k, v in sorted(bodycount.items())}
+        bodycount = Counter(
+            [(e['EventBodyName'], e['EventBodyId']) async for e in events]
+        )
+    return {
+        k[0]: {'id': k[1], 'count': v}
+        for k, v in sorted(bodycount.items())
+    }
 
 
 async def fetch_events(
     namespace: str,
-    bodies=[]
-) -> AsyncGenerator[Mapping[str, any], None]:
+    bodies=[],
+    fetch_items=True
+) -> AsyncGenerator[Mapping[str, Any], None]:
     yesterday = (date.today() - timedelta(days=1)).isoformat()
     filter_ = f"EventDate gt datetime'{yesterday}'"
-    events = query.fetch_event_items(namespace, filter_=filter_, fields=EVENTFIELDS)
+    events = query.fetch_event_items(
+        namespace, filter_=filter_, fields=EVENTFIELDS
+    )
     async for event, items in events:
         # "IN" operator not supported in odata3, so we do in code
         if bodies and str(event['EventBodyId']) not in bodies:
             continue
-        event['items'] = extract_items(items)
+        if fetch_items:
+            event['items'] = extract_items(items)
         yield event
 
 
-def extract_items(items: Mapping[str, any]) -> str:
+def extract_items(items: List[Mapping[str, Any]]) -> str:
     '''reconstruct an agenda from the event items'''
     text: List[str] = []
     for item in items:
