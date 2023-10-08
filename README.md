@@ -2,9 +2,44 @@ These projects are built on top of the legistar api.
 
 [legistar api notes](legistar.md)
   
-[exampl of the data you can get from the api](documentation/sanjose.json)
+[example of the data you can get from the api](documentation/sanjose.json)
 
-## Legisearch
+
+## Under Progress
+
+This repo is being reorganized.
+
+The old use was a static site generation for meeting agenda searches.
+This is currently broken.
+I want to get it working again.
+Currently I am rewriting and reorganizing the code to be more general purpose.
+Legisearch has been split from a stand-alone script.
+The useful bits are moved to `query.py`.
+I have used those bits to build a new tool on top, that generates calendars.
+That tool is [here](https://www.jisaacstone.com/legiscal/).
+
+So. `query.py` is definitely working.
+The rest is probably not.
+
+
+## Structure
+
+The shape of the legistar api is such that real-time search is impractical.
+The stuff we are interested in (what items were talked about in a particular meeting, how people voted, etc)
+  is not queryable from the api.
+That information is all behind `event` or `matter` ids.
+So to achieve search it is necessary to pull all data from legistar first, and store it ourselves.
+I am currently using sqlite. It is I think good enough for this purpose.
+Fetching the data and storing it is the easy part. Search is still undecided.
+I had a very basic search functionality working earlier.
+But it has significant limitations.
+Would be great to find some kind of library or out-of-the-box solution.
+
+
+# Old documentation below - mostly out of date
+
+
+## Legisearch - legacy. TODO: cleanup
 
 fetched city meeting data from legistar and generates a single-page static html file for rapid searching through agenda item titles
 
