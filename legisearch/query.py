@@ -1,5 +1,7 @@
-from typing import Mapping, Tuple
+from typing import Mapping, Tuple, Dict, Any, AsyncGenerator
 from urllib import request
+from datetime import datetime
+from dateutil.parser import parse
 import sys
 import json
 import math
@@ -49,7 +51,7 @@ def events_url(
     min_id: int = 0,
     limit: int = 1000,
     fields=EVENTFIELDS,
-) -> Tuple[str, Mapping[str, str]]:
+) -> Tuple[str, Dict[str, str]]:
     '''An assumption here is that event_id always increases'''
     url = f'{BASEURL}{namespace}/events?'
     params = {
@@ -62,7 +64,7 @@ def events_url(
     return url, params
 
 
-def items_url(namespace: str, event_id: int) -> Tuple[str, Mapping]:
+def items_url(namespace: str, event_id: int) -> Tuple[str, Dict[str, str]]:
     ''' The data can sometimes be messy, the observed order is
     EventItemMintuesSequence but sometimes this value is null.
     '''
@@ -87,15 +89,15 @@ async def fetch_event_items(
     limit=math.inf,
     fields=EVENTFIELDS,
     filter_='EventAgendaFile ne null',
-):
+) -> AsyncGenerator[Tuple[Mapping[str, Any], Mapping[str, Any]], None]:
     async with httpx.AsyncClient() as client:
         event_gen = fetch_events(
             client, namespace, min_id, limit, fields, filter_
         )
-        async for event, item in fetch_items(
+        async for event, items in fetch_items(
             client, namespace, event_gen
         ):
-            yield event, item
+            yield event, items
 
 
 async def fetch_events(
@@ -105,7 +107,7 @@ async def fetch_events(
     limit=math.inf,
     fields=EVENTFIELDS,
     filter_='EventAgendaFile ne null',
-):
+) -> AsyncGenerator[Mapping[str, Any], None]:
     '''fetches events from the legistart api
 
     will start at `min_id` and continue until `limit`
@@ -150,64 +152,62 @@ async def fetch_items(
         yield (event, [])
 
 
-def filter_events(
+def format_event(
     namespace,
     event,
     items,
     fetch_matter_text=False,
     fetch_item_extra=False,
-):
-    print(event['EventId'], items)
-    event['items'] = []
+) -> Mapping[str, Any]:
+    event_items = []
     # some event items are just text, and are motions or discussion
     # related to the previous item. So we keep track of the item and
     # append to it's description
-    item = None
-    for item_ in items:
-        if item_['EventItemAgendaNumber']:
-            if item:
-                event['items'].append(item)
-                item = None
-            if (
-                item_['EventItemAgendaNumber'][-1] == '.' or
-                '.' not in item_['EventItemAgendaNumber']
-            ):
-                # skip section titles
-                continue
-            if fetch_item_extra:
-                item = add_item_data(item_)
-            if fetch_matter_text:
-                add_matter_data(namespace, item)
-        elif item and (
-            item_['EventItemActionText'] or item_['EventItemTitle']
-        ):
-            # any of these could be null
-            item['EventItemActionText'] = '\n'.join(filter(
-                None,
-                (
-                    item['EventItemActionText'],
-                    item_['EventItemTitle'],
-                    item_['EventItemActionText']
-                )
-            ))
-    if item:
-        event['items'].append(item)
+    agenda_number = ''
+    for item in items:
+        if item['EventItemAgendaNumber']:
+            agenda_number = item['EventItemAgendaNumber']
+        else:
+            item['EventItemAgendaNumber'] = agenda_number
+        if fetch_item_extra:
+            add_item_data(namespace, item)
+        if fetch_matter_text:
+            add_matter_data(namespace, item)
+        item['attachments'] = json.dumps(
+            {m['MatterAttachmentName']: m['MatterAttachmentHyperlink']
+             for m in item.pop('EventItemMatterAttachments')}
+        )
+        possibleTexts = filter(
+            None,
+            (
+                item['EventItemActionText'],
+                item['EventItemTitle'],
+                item['EventItemActionText']
+            )
+        )
+        if possibleTexts:
+            item['EventItemActionText'] = '\n'.join(possibleTexts)
+        event_items.append(item)
 
-    yield event
+    # TODO: timezone stuff
+    try:
+        date = datetime.fromisoformat(event['EventDate'])
+        time = parse(event['EventTime'])
+        dt = datetime.combine(date.date(), time.time())
+        event['datetime'] = dt
+    except Exception as e:
+        print(f'failed to parse date {event} {e}')
+    event['items'] = event_items
+    return event
 
 
-def add_item_data(item):
+def add_item_data(namespace, item):
     # sqlite supports json, but the python stdlib doesn't interface easily
     # so I just store as text, and use JSON.parse on the frontend
-    item['attachments'] = json.dumps(
-        {m['MatterAttachmentName']: m['MatterAttachmentHyperlink']
-         for m in item.pop('EventItemMatterAttachments')}
-    )
     for subcat in ['Votes', 'RollCalls']:
         url = f'{BASEURL}{namespace}/EventItems/{item["EventItemId"]}/{subcat}'
         data = json.load(request.urlopen(url))
         item[subcat] = data
-    return item
 
 
 def add_matter_data(namespace: str, item):
