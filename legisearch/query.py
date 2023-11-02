@@ -1,6 +1,6 @@
 from typing import Mapping, Tuple, Dict, Any, AsyncGenerator
 from urllib import request
-from datetime import datetime
+from datetime import datetime, time
 from dateutil.parser import parse
 import sys
 import json
@@ -180,20 +180,27 @@ def format_event(
         possibleTexts = filter(
             None,
             (
-                item['EventItemActionText'],
+                item['EventItemMatterType'],
+                item['EventItemAgendaNumber'],
                 item['EventItemTitle'],
-                item['EventItemActionText']
+                item['EventItemActionText'],
             )
         )
         if possibleTexts:
-            item['EventItemActionText'] = '\n'.join(possibleTexts)
+            item['lower_text'] = '\n'.join(possibleTexts).lower()
+        else:
+            item['lower_text'] = None
+
         event_items.append(item)
 
     # TODO: timezone stuff
     try:
         date = datetime.fromisoformat(event['EventDate'])
-        time = parse(event['EventTime'])
-        dt = datetime.combine(date.date(), time.time())
+        if event['EventTime']:
+            hour = parse(event['EventTime']).time()
+        else:
+            hour = time(12)
+        dt = datetime.combine(date.date(), hour)
         event['datetime'] = dt
     except Exception as e:
         print(f'failed to parse date {event} {e}')

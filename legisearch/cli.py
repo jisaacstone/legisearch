@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 
 import sys
-import json
-import sqlite3
 import asyncio
 import argparse
-from sqlalchemy import func, select
-from legisearch.query import fetch_event_items, format_event, \
-    FINALSTATUS
 from legisearch import db
+from legisearch.fetch import fetch_more_events
+from legisearch.search import search
 
 
 def parser() -> argparse.ArgumentParser:
@@ -66,73 +63,27 @@ def parser() -> argparse.ArgumentParser:
         help='name of the html page to generate',
     )
     generate_parser.set_defaults(func=generate)
+
+    search_parser = subparsers.add_parser(
+        'search',
+        parents=[parent],
+        help='search previously fetched events and items'
+    )
+    search_parser.add_argument(
+        'search_string',
+        help='string to search for',
+    )
+    search_parser.set_defaults(func=do_search)
+
     return root_parser
 
 
-async def fetch_more_events(
-    namespace: str,
-    limit=100,
-    refetch_nonfinal=False,
-):
-    '''check the max event id from the db, and fetch `limit` more events'''
-    minid = None
-    async with db.new_connection(namespace) as conn:
-        try:
-            if refetch_nonfinal:
-                result = await conn.exectue(
-                    select(db.events)
-                    .where(db.events.c.minutestatus != FINALSTATUS)
-                )
-            else:
-                result = await conn.execute(
-                    select(func.max(db.events.c.id))
-                )
-            minid, = result.fetchone()
-        except sqlite3.OperationalError:
-            # probably our first run
-            print('mmm, db seems missing. please re-run')
-            await db.create_tables(namespace, conn)
-
-        if minid is None:
-            minid = 0
-        print(f'fetching up to {limit} {namespace} events, minid {minid}')
-        event_item_iter = fetch_event_items(
-            namespace, min_id=minid, limit=limit
-        )
-        async for event, items in event_item_iter:
-            filtered = format_event(namespace, event, items)
-            await insert_event(conn, filtered)
-
-
-async def insert_event(conn, event):
-    # insert event
-    # json.dump(event, sys.stdout, indent=2, default=str)
-    await conn.execute(
-        db.events.insert(),
-        [{
-            'id': event['EventId'],
-            'body_id': event['EventBodyId'],
-            'meeting_time': event['datetime'],
-            'agenda_url': event['EventAgendaFile'] or '',
-            'minutes_url': event['EventMinutesFile'],
-            'minutes_status': event['EventMinutesStatusId'],
-            'insite_url': event['EventInSiteURL']
-        }]
-    )
-    await conn.execute(
-        db.items.insert(),
-        [{
-            'id': item['EventItemId'],
-            'event_id': event['EventId'],
-            'agenda_number': item['EventItemAgendaNumber'],
-            'action_text': item['EventItemActionText'],
-            'title': item['EventItemTitle'],
-            'matter_id': item['EventItemMatterId'],
-            'matter_attachments': item['attachments'],
-            'matter_status': item['EventItemMatterStatus'],
-            'matter_type': item['EventItemMatterType'],
-        } for item in event['items']]
-    )
+async def do_search(namespace, search_string):
+    columns = ('body_id', 'meeting_time', 'matter_type', 'agenda_number',
+               'title', 'action_text')
+    print('|'.join(columns))
+    async for result in search(namespace, search_string):
+        print('|'.join(str(result[col]) for col in columns))
 
 
 async def reset(
@@ -164,5 +115,9 @@ async def parse_and_run():
         raise
 
 
-if __name__ == '__main__':
+def main():
     asyncio.run(parse_and_run())
+
+
+if __name__ == '__main__':
+    main()
