@@ -5,23 +5,6 @@ These projects are built on top of the legistar api.
 [example of the data you can get from the api](documentation/sanjose.json)
 
 
-## Under Progress
-
-This repo is being reorganized.
-
-The old use was a static site generation for meeting agenda searches.
-This is currently broken.
-I want to get it working again.
-Currently I am rewriting and reorganizing the code to be more general purpose.
-Legisearch has been split from a stand-alone script.
-The useful bits are moved to `query.py`.
-I have used those bits to build a new tool on top, that generates calendars.
-That tool is [here](https://www.jisaacstone.com/legiscal/).
-
-So. `query.py` is definitely working.
-The rest is probably not.
-
-
 ## Structure
 
 The shape of the legistar api is such that real-time search is impractical.
@@ -36,24 +19,31 @@ But it has significant limitations.
 Would be great to find some kind of library or out-of-the-box solution.
 
 
-# Old documentation below - mostly out of date
+## Legisearch
 
-
-## Legisearch - legacy. TODO: cleanup
-
-fetched city meeting data from legistar and generates a single-page static html file for rapid searching through agenda item titles
-
-working example [here](http://www.jisaacstone.com/projects/councildoc.html)
+fetched city meeting data from legistar and sore in a searchable db.
 
 The main script is `legisearch`
 
 It requires python3.8 or greater to run.
 
+`legisearch reset -n NAMESPACE` will create a new db with empty tables, wiping any preexisting data for that namespace.
+
 `legisearch fetch -n NAMESPACE` will pull events from legistar and store in a sqlite db.
 
-`legisearch generate -n NAMESPACE` will create NAMESPACE.html single-page webapp, with css, javascript and data embedded in a single file.
+`legisearch search -n NAMESPACE STRING` will search all previously fetched events for STRING.
 
-known namespaces
+
+## Legiscal
+
+Generates ical feeds from legistar meeting body info.
+There is a flask app in development. But the code works as a library.
+There is a functional project using the code [here](https://www.jisaacstone.com/legiscal/index.html)
+
+
+## Namespaces
+
+Known namespaces in Santa Clara County:
 
 | namespace | city |
 | --- | --- |
@@ -63,9 +53,4 @@ known namespaces
 | sanjose | San Jose, CA |
 | bart | BART |
 
-This was built for mountain view. Each city stores the data a bit differently.
-More work needs to be done to make it portable across cities.
-
-## Legiscal
-
-This will be a web server that generates ical feeds from legistar meeting body info
+Many more exist, check the [subdomain crawler results](documentation/legistar) to see if your local legislative body is in.
