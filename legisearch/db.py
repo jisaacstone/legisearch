@@ -49,9 +49,12 @@ async def recreate_tables(namespace):
         await conn.run_sync(meta.create_all)
 
 
-async def create_tables(namespace):
-    async with new_connection(namespace) as conn:
+async def create_tables(namespace, conn=None):
+    if conn:
         await conn.run_sync(meta.create_all)
+    else:
+        async with new_connection(namespace) as conn:
+            await conn.run_sync(meta.create_all)
 
 
 def create_engine(namespace):

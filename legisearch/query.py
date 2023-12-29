@@ -44,6 +44,7 @@ ITEMFIELDS = (
     'EventItemMatterType')
 TEMPLATE = 'councildoc.html.template'
 FINALSTATUS = 10  # for re-downloading non-final events
+TM = 10000  # default timeout ten seconds
 
 
 def events_url(
@@ -90,7 +91,8 @@ async def fetch_event_items(
     fields=EVENTFIELDS,
     filter_='EventAgendaFile ne null',
 ) -> AsyncGenerator[Tuple[Mapping[str, Any], Mapping[str, Any]], None]:
-    async with httpx.AsyncClient() as client:
+    transport = httpx.AsyncHTTPTransport(retries=2)
+    async with httpx.AsyncClient(transport=transport) as client:
         event_gen = fetch_events(
             client, namespace, min_id, limit, fields, filter_
         )
@@ -118,7 +120,7 @@ async def fetch_events(
     if filter_:
         params['$filter'] = filter_
     omid = min_id
-    response = await client.get(url, params=params)
+    response = await client.get(url, params=params, timeout=TM)
     events = response.json()
     for event in events:
         limit -= 1
@@ -144,7 +146,7 @@ async def fetch_items(
         events.append(event)
         # fetch event items
         iurl, iparams = items_url(namespace, event['EventId'])
-        futures.append(client.get(iurl, params=iparams))
+        futures.append(client.get(iurl, params=iparams, timeout=TM))
 
     for event, item_resp in zip(events, await asyncio.gather(*futures)):
         yield (event, item_resp.json())
@@ -165,6 +167,11 @@ def format_event(
     # append to it's description
     agenda_number = ''
     for item in items:
+        if not item.get('EventItemId'):
+            print('item has no id')
+            print(item)
+            continue
+
         if item['EventItemAgendaNumber']:
             agenda_number = item['EventItemAgendaNumber']
         else:
