@@ -2,8 +2,17 @@
 
 from sqlalchemy import func, select, exc
 from legisearch.query import fetch_event_items, format_event, \
-    FINALSTATUS
+    FINALSTATUS, fetch_bodies
 from legisearch import db
+
+
+async def setup_db(namespace: str, conn):
+    await db.recreate_tables(namespace, conn)
+    bodies = fetch_bodies(namespace)
+    await conn.execute(
+        db.bodies.insert(),
+        [{'id': int(b['BodyId']), 'name': b['BodyName'].strip()} for b in bodies]
+    )
 
 
 async def fetch_more_events(
@@ -43,7 +52,7 @@ async def fetch_minid(conn, refetch_nonfinal, namespace='', retry=True):
         if retry:
             # probably our first run
             print('mmm, db seems missing. attempting to create')
-            await db.create_tables(namespace, conn)
+            await setup_db(namespace, conn)
             return await fetch_minid(conn, refetch_nonfinal, False)
         else:
             raise

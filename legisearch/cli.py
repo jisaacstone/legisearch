@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
 import sys
+import json
 import asyncio
 import argparse
+from sqlalchemy import select
 from legisearch import db
-from legisearch.fetch import fetch_more_events
+from legisearch.fetch import fetch_more_events, setup_db
 from legisearch.search import search
 
 
@@ -53,6 +55,13 @@ def parser() -> argparse.ArgumentParser:
     )
     reset_parser.set_defaults(func=reset)
 
+    bodies_parser = subparsers.add_parser(
+        'bodies',
+        parents=[parent],
+        help='fetch meeding body names and ids'
+    )
+    bodies_parser.set_defaults(func=bodies)
+
     generate_parser = subparsers.add_parser(
         'generate',
         parents=[parent],
@@ -86,11 +95,19 @@ async def do_search(namespace, search_string):
         print('|'.join(str(result[col]) for col in columns))
 
 
+async def bodies(namespace):
+    async with db.new_connection(namespace) as conn:
+        result = await conn.execute(select(db.bodies))
+        bodies = {row[0]: row[1] for row in result}
+    json.dump(bodies, sys.stdout)
+
+
 async def reset(
     namespace: str,
 ):
     '''drop all tables and data. dangerous'''
-    await db.recreate_tables(namespace)
+    async with db.new_connection(namespace) as conn:
+        await setup_db(namespace, conn)
 
 
 async def generate(
