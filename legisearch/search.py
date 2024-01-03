@@ -7,15 +7,34 @@ from sqlalchemy import select, func
 from legisearch import db
 
 
-async def search(namespace, search_string):
-    low = search_string.lower()
+async def search(
+    namespace,
+    search_string='',
+    body=0,
+    year=0,
+    month=0,
+):
     query = (
         select(db.items, db.events)
         .select_from(db.items)
         .join(db.events, db.items.c.event_id == db.events.c.id)
-        .where(func.instr(db.items.c.full_text_lower, low))
     )
+    if search_string:
+        low = search_string.lower()
+        query = query.where(func.instr(db.items.c.full_text_lower, low))
+    if body:
+        result = await conn.execute(select(db.bodies))
+        bodies = {int(row[1]): row[0] for row in result}
+        body_id = bodies.get(body, body)
+        query = query.where(db.events.c.body_id == body_id)
+    if year:
+        if month:
+            ln, v = 8, f'{year}-{month}'
+        else:
+            ln, v = 5, str(year)
+        query = query.where(func.substr(db.events.c.meeting_time, 0, ln) == v)
     async with db.new_connection(namespace) as conn:
+        print(query)
         result = await conn.execute(query)
         for row in result:
             yield row._mapping

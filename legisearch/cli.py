@@ -79,19 +79,27 @@ def parser() -> argparse.ArgumentParser:
         help='search previously fetched events and items'
     )
     search_parser.add_argument(
-        'search_string',
+        '-q', '--query',
         help='string to search for',
+    )
+    search_parser.add_argument(
+        '-b', '--body',
+        help='id of meeting body',
+    )
+    search_parser.add_argument(
+        '-y', '--year',
+        help='limit to specific year',
     )
     search_parser.set_defaults(func=do_search)
 
     return root_parser
 
 
-async def do_search(namespace, search_string):
+async def do_search(namespace, query=None, body=None, year=None):
     columns = ('body_id', 'meeting_time', 'matter_type', 'agenda_number',
                'title', 'action_text')
     print('|'.join(columns))
-    async for result in search(namespace, search_string):
+    async for result in search(namespace, search_string=query, body=body, year=year):
         print('|'.join(str(result[col]) for col in columns))
 
 
