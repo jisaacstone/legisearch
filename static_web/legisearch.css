@@ -1,0 +1,132 @@
+a, span {
+  display: inline-block;
+}
+a:hover {
+  color: #60b;
+}
+a:visited {
+  color: #f89;
+}
+.header {
+  text-align: center;
+}
+.autocomplete-wrapper {
+  font-size: x-large;
+  margin: 1rem;
+}
+#autoComplete {
+  font-size: x-large;
+  height: 1.5em;
+  border: 0.5rem double rgba(13, 86, 12, 0.3);
+}
+#filters {
+  display: flex;
+  flex-wrap: wrap;
+  height: 3rem;
+  overflow-x: hidden;
+  box-shadow: 0 -1rem 1rem -1rem inset rgba(49, 12, 23, 0.3);
+  margin-bottom: 0.5rem;
+}
+#filterhead {
+  cursor: pointer;
+}
+#filters.open {
+  height: initial;
+}
+.filterlist {
+  display: flex;
+  flex-wrap: wrap;
+}
+.filter {
+  flex-grow: 1;
+  padding: 0.1rem;
+  margin: 0.1rem;
+  border-radius: 0.1rem 0.2rem;
+  box-shadow: 0 0 0.3rem inset rgba(25, 25, 30, 0.2);
+}
+.filter.checked {
+  background-color: rgba(150, 200, 150, 0.1);
+  box-shadow: 0 0 0.3rem inset rgba(25, 225, 30, 0.3);
+}
+.result {
+  max-width: 80rem;
+  padding: 1rem;
+  position: relative;
+  background-color: rgba(89, 58, 50, 0.1);
+
+  overflow-y: hidden;
+  text-overflow: ellipsis;
+  max-height: 10rem;
+
+  display: flex;
+  flex-wrap: wrap;
+}
+.result > * {
+  flex-grow: 1;
+}
+.result.long {
+  cursor: s-resize;
+  box-shadow: 0 -1rem 1rem -1rem inset rgba(49, 12, 23, 0.3);
+}
+.result.long.open {
+  max-height: initial;
+  cursor: n-resize;
+  box-shadow: initial;
+}
+.result:nth-child(even) {
+  background-color: rgba(161, 168, 180, 0.1);
+}
+.resultTitle {
+  padding: 0.5rem;
+  text-align: left;
+  width: 100%;
+  display: flex;
+  gap: 1rem;
+  font-weight: bold;
+  background-color: rgba(200, 200, 200, 0.1);
+}
+.resultDescription {
+  text-align: left;
+  width: 100%;
+}
+.matter {
+  text-align: left;
+  align-self: right;
+  display: flex;
+  gap: 1rem;
+  font-variant-caps: all-small-caps;
+  flex-grow 2;
+}
+.meetinginfo {
+  text-align: left;
+  align-self: center;
+}
+.meetinginfo div:nth-child(1) {
+  font-weight: 500;
+  text-shadow: 0.1rem 0.1rem 0.1rem rgba(200, 100, 110, 0.1);
+}
+.resultLinks {
+  flex-grow: 0;
+  align-self: center;
+}
+.resultLinks a, .resultLinks span {
+  margin: 0.5rem;
+  padding: 0.5rem;
+  font-size: large;
+  font-weight: 300;
+  background-color: rgba(20, 22, 99, 0.1);
+  border-radius: 1rem;
+  min-width: 7rem;
+  text-align: center;
+}
+.attachments {
+  margin: 0 0.5rem;
+}
+.attachments a {
+  margin: 0.1rem;
+  padding: 0.1rem;
+}
+.passed:before {
+  content: '\2611';
+}
+
