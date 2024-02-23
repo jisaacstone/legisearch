@@ -1,10 +1,11 @@
-from typing import Mapping, Tuple, Dict, Any, AsyncGenerator
+from typing import Mapping, Tuple, Dict, Any, AsyncGenerator, Optional
 from urllib import request
 from datetime import datetime, time
 from dateutil.parser import parse
 import sys
 import json
 import math
+import logging
 import asyncio
 import httpx
 
@@ -160,16 +161,22 @@ def format_event(
     items,
     fetch_matter_text=False,
     fetch_item_extra=False,
-) -> Mapping[str, Any]:
+) -> Optional[Mapping[str, Any]]:
     event_items = []
     # some event items are just text, and are motions or discussion
     # related to the previous item. So we keep track of the item and
     # append to it's description
+    if not all(event.get(k) for k in ('EventId', 'EventDate')):
+        logging.error(f'Bad Event: {event}')
+    if not items:
+        # this is probably a meeting that was cancelled
+        # or has not yet happened
+        logging.info(f'Event has no items: {event}')
+        return None
     agenda_number = ''
     for item in items:
         if not item.get('EventItemId'):
-            print('item has no id')
-            print(item)
+            logging.error(f'Bad Item (noid): {item}')
             continue
 
         if item['EventItemAgendaNumber']:

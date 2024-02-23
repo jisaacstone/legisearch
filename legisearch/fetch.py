@@ -26,13 +26,19 @@ async def fetch_more_events(
         minid = await fetch_minid(conn, refetch_nonfinal, namespace)
         if minid is None:
             minid = 0
-        print(f'fetching up to {limit} {namespace} events, minid {minid}')
+        print(f'fetching up to {limit} {namespace} events, minid {minid}\n')
         event_item_iter = fetch_event_items(
             namespace, min_id=minid, limit=limit
         )
+        inserted = 0
         async for event, items in event_item_iter:
+            if not inserted % 15:
+                print(f'\r{event["EventId"]} has {len(items)} items', end='')
             filtered = format_event(namespace, event, items)
-            await insert_event(conn, filtered)
+            if filtered:
+                await insert_event(conn, filtered)
+                inserted += 1
+        print(f'\rinserted {inserted} events')
 
 
 async def fetch_minid(conn, refetch_nonfinal, namespace='', retry=True):
