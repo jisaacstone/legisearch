@@ -6,7 +6,7 @@ import asyncio
 import argparse
 from sqlalchemy import select
 from legisearch import db
-from legisearch.fetch import fetch_more_events, setup_db
+from legisearch.fetch import fetch_more_events, setup_db, insert_bodies
 from legisearch.search import search
 
 
@@ -107,6 +107,11 @@ async def bodies(namespace):
     async with db.new_connection(namespace) as conn:
         result = await conn.execute(select(db.bodies))
         bodies = {row[0]: row[1] for row in result}
+        if not bodies:
+            print('fetching body data from legistar')
+            await insert_bodies(namespace, conn)
+            result = await conn.execute(select(db.bodies))
+            bodies = {row[0]: row[1] for row in result}
     json.dump(bodies, sys.stdout)
 
 

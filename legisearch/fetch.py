@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 
+from typing import Mapping, Any
+import json
+from datetime import datetime, time
+from dateutil.parser import parse
 from sqlalchemy import func, select, exc
-from legisearch.query import fetch_event_items, format_event, \
-    FINALSTATUS, fetch_bodies
+from legisearch.legistar import fetch_event_items, \
+    FINALSTATUS, fetch_bodies, add_item_data, add_matter_data
 from legisearch import db
 
 
 async def setup_db(namespace: str, conn):
     await db.recreate_tables(namespace, conn)
+    await insert_bodies(namespace, conn)
+
+
+async def insert_bodies(namespace: str, conn):
     bodies = fetch_bodies(namespace)
     await conn.execute(
         db.bodies.insert(),
@@ -62,6 +70,84 @@ async def fetch_minid(conn, refetch_nonfinal, namespace='', retry=True):
             return await fetch_minid(conn, refetch_nonfinal, False)
         else:
             raise
+
+
+def format_event(
+    namespace,
+    event,
+    items,
+    fetch_matter_text=False,
+    fetch_item_extra=False,
+) -> Mapping[str, Any]:
+    event_items = {}
+    # some event items are just text, and are motions or discussion
+    # related to the previous item. So we keep track of the item and
+    # append to it's description
+    agenda_number = ''
+    for item in items:
+        if not item.get('EventItemId'):
+            print('item has no id')
+            print(item)
+            continue
+
+        if item['EventItemAgendaNumber']:
+            agenda_number = item['EventItemAgendaNumber']
+        else:
+            item['EventItemAgendaNumber'] = agenda_number
+
+        if fetch_item_extra:
+            add_item_data(namespace, item)
+        if fetch_matter_text:
+            add_matter_data(namespace, item)
+        item['attachments'] = json.dumps(
+            {m['MatterAttachmentName']: m['MatterAttachmentHyperlink']
+             for m in item.pop('EventItemMatterAttachments')}
+        )
+        possibleTexts = filter(
+            None,
+            (
+                item['EventItemMatterType'],
+                item['EventItemAgendaNumber'],
+                item['EventItemTitle'],
+                item['EventItemActionText'],
+            )
+        )
+        if possibleTexts:
+            item['lower_text'] = '\n'.join(possibleTexts).lower()
+        else:
+            item['lower_text'] = None
+
+        if agenda_number and agenda_number in items:
+            append_item_data(event_items[agenda_number], item)
+        else:
+            event_items[agenda_number] = item
+
+    # TODO: timezone stuff
+    try:
+        date = datetime.fromisoformat(event['EventDate'])
+        if event['EventTime']:
+            try:
+                hour = parse(event['EventTime']).time()
+            except Exception:
+                print(f'failed to parse time for {event}, using noon')
+                hour = time(12)
+        else:
+            hour = time(12)
+        dt = datetime.combine(date.date(), hour)
+        event['datetime'] = dt
+    except Exception as e:
+        print(f'failed to parse date {event} {e}')
+    event['items'] = list(event_items.values())
+    return event
+
+
+def append_item_data(item_base, new_data):
+    for to_merge in ('EventItemTitle', 'EventItemActionText'):
+        if new_data.get(to_merge):
+            if item_base.get(to_merge):
+                item_base[to_merge] = f'{item_base[to_merge].trim()}\n\n{new_data[to_merge].trim()}'
+            else:
+                item_base[to_merge] = new_data[to_merge].trim()
 
 
 async def insert_event(conn, event):
