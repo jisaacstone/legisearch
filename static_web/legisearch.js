@@ -2,48 +2,25 @@ const settings = {
   maxResults: 75,
   options: {
     keys: [{ name: 'title', weight: 0.7 }, { name: 'action_text', weight: 0.3 }],
-    includeScore: true
+    includeScore: true,
+    distance: 5000
   }
 };
 const db = {};
 
-const search = (term_) => {
-  // Could not find a library that did even basic things like start of word matches being found first
-  // This function is kinda dumb but works. Might be good enough?
-  const term = term_.toLowerCase();
-  const results = [];
-  const keys = Object.keys(items);
-  const addVals = (k) => {
-    //remove the key so it doesn't show in other filters
-    keys.splice(keys.indexOf(k), 1);
-    items[k].forEach((item) => {
-      console.log(events[item.event_id].body, settings.bodies);
-      if (settings.bodies.has(events[item.event_id].body.toString())) {
-        results.push(item);
-      }
-    });
+// delay search for a few milliseconds, so it only executes when there is a pause in typing
+function delay(callback, ms) {
+  var timer = 0;
+  return function() {
+    var context = this, args = arguments;
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      callback.apply(context, args);
+    }, ms || 0);
   };
-  //starting with
-  keys.filter(key => key.startsWith(term)).forEach(addVals);
-  if (results.length > settings.maxResults) {
-    return results.slice(0, settings.maxResults);
-  }
-  //word starts with
-  keys.filter(key => key.includes(' ' + term)).forEach(addVals);
-  if (results.length > settings.maxResults) {
-    return results.slice(0, settings.maxResults);
-  }
-  //word contains
-  keys.filter(key => key.includes(term)).forEach(addVals);
-  if (results.length > settings.maxResults) {
-    return results.slice(0, settings.maxResults);
-  }
-  //word contains any
-  const terms = term.split(" ");
-  keys.filter(key => terms.every((t) => key.includes(t))).forEach(addVals);
-  return results.slice(0, settings.maxResults);
-};
+}
 
+// TODO: cleanup and enable
 const makeFilters = (filterEl, callback) => {
   const bodyFilter = document.createElement('div');
   bodyFilter.className = 'filterlist';
@@ -219,7 +196,7 @@ const onload = () => {
     };
     // TODO: small delay, so it only does search after a pause
     // or: only after a certain number of characters?
-    acEl.addEventListener('input', onType);
+    acEl.addEventListener('input', delay(onType, 200));
     //call immediatly, so page refresh pulls results
     onType();
   });
@@ -227,6 +204,7 @@ const onload = () => {
 
 window.onload = () => {
   const filEl = document.getElementById('filters');
+  // TODO: fix filetering, improve filtering
   //makeFilters(filEl, onType);
   //document.getElementById('filterhead').onclick = () => filEl.classList.toggle('open');
   onload();
