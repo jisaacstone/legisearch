@@ -1,10 +1,11 @@
 const settings = {
-  maxResults: 75,
   options: {
     keys: [{ name: 'title', weight: 0.7 }, { name: 'action_text', weight: 0.3 }],
     includeScore: true,
     distance: 5000
-  }
+  },
+  maxResults: 50,
+  namespace: 'mountainview'
 };
 const db = {};
 
@@ -169,11 +170,17 @@ const loadData = (namespace) => {
   ]);
 };
 
+onNsChange = () => {
+  const ns = document.getElementById('namespace').value;
+  settings.namespace = ns;
+  return loadData(settings.namespace);
+};
+
 const onload = () => {
-  const namespace = 'mountainview'; // TODO: make variable
-  loadData(namespace).then(() => {
+  onNsChange().then(() => {
     const resEl = document.getElementById('results');
     const acEl = document.getElementById('autoComplete');
+    const nsEl = document.getElementById('namespace');
     const onType = () => {
       const value = acEl.value;
       resEl.innerHTML = '';
@@ -197,6 +204,7 @@ const onload = () => {
     // TODO: small delay, so it only does search after a pause
     // or: only after a certain number of characters?
     acEl.addEventListener('input', delay(onType, 200));
+    nsEl.addEventListener('change', onNsChange);
     //call immediatly, so page refresh pulls results
     onType();
   });

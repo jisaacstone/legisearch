@@ -117,10 +117,8 @@ def format_event(
             item['lower_text'] = None
 
         if agenda_number and agenda_number in event_items:
-            print('append')
             append_item_data(event_items[agenda_number], item)
         else:
-            print('new')
             event_items[agenda_number] = item
 
     # TODO: timezone stuff
@@ -138,7 +136,6 @@ def format_event(
         event['datetime'] = dt
     except Exception as e:
         print(f'failed to parse date {event} {e}')
-    print(event_items.keys())
     event['items'] = list(event_items.values())
     return event
 

@@ -10,3 +10,4 @@ councildoc.html
 *.pyc
 *.bak
 .*
+static_web/*.json
