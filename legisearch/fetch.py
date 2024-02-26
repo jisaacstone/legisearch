@@ -91,9 +91,8 @@ def format_event(
             continue
 
         if item['EventItemAgendaNumber']:
-            agenda_number = item['EventItemAgendaNumber']
-        else:
-            item['EventItemAgendaNumber'] = agenda_number
+            agenda_number = item['EventItemAgendaNumber'].strip()
+        item['EventItemAgendaNumber'] = agenda_number
 
         if fetch_item_extra:
             add_item_data(namespace, item)
@@ -117,9 +116,11 @@ def format_event(
         else:
             item['lower_text'] = None
 
-        if agenda_number and agenda_number in items:
+        if agenda_number and agenda_number in event_items:
+            print('append')
             append_item_data(event_items[agenda_number], item)
         else:
+            print('new')
             event_items[agenda_number] = item
 
     # TODO: timezone stuff
@@ -137,6 +138,7 @@ def format_event(
         event['datetime'] = dt
     except Exception as e:
         print(f'failed to parse date {event} {e}')
+    print(event_items.keys())
     event['items'] = list(event_items.values())
     return event
 
@@ -145,9 +147,9 @@ def append_item_data(item_base, new_data):
     for to_merge in ('EventItemTitle', 'EventItemActionText'):
         if new_data.get(to_merge):
             if item_base.get(to_merge):
-                item_base[to_merge] = f'{item_base[to_merge].trim()}\n\n{new_data[to_merge].trim()}'
+                item_base[to_merge] = f'{item_base[to_merge].strip()}\n\n{new_data[to_merge].strip()}'
             else:
-                item_base[to_merge] = new_data[to_merge].trim()
+                item_base[to_merge] = new_data[to_merge].strip()
 
 
 async def insert_event(conn, event):
@@ -174,10 +176,30 @@ async def insert_event(conn, event):
                 'agenda_number': item['EventItemAgendaNumber'],
                 'action_text': item['EventItemActionText'],
                 'title': item['EventItemTitle'],
-                'full_text_lower': item['lower_text'],
+                # 'full_text_lower': item['lower_text'],
                 'matter_id': item['EventItemMatterId'],
                 'matter_attachments': item['attachments'],
                 'matter_status': item['EventItemMatterStatus'],
                 'matter_type': item['EventItemMatterType'],
             } for item in event['items']]
         )
+
+
+if __name__ == '__main__':
+    import sys
+    import asyncio
+    from pprint import pprint
+    namespace = sys.argv[1]
+    minid = int(sys.argv[2])
+    limit = int(sys.argv[3])
+
+    async def fn():
+        event_item_iter = fetch_event_items(
+            namespace, min_id=minid, limit=limit
+        )
+        inserted = 0
+        async for event, items in event_item_iter:
+            filtered = format_event(namespace, event, items)
+            pprint(filtered)
+
+    asyncio.run(fn())
