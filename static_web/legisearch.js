@@ -5,7 +5,7 @@ const settings = {
     distance: 5000
   },
   maxResults: 50,
-  namespace: 'mountainview'
+  jurisdiction: 'mountainview'
 };
 const db = {};
 
@@ -147,66 +147,83 @@ const makeResultElement = (res) => {
   return result;
 };
 
-const loadData = (namespace) => {
+const loadData = (jurisdiction) => {
   // 'items' is left and an array, because fuse expects that
   // others are changed to a key-value mapping for faster lookup
   return Promise.all([
-    fetch(`${namespace}.events.json`)
+    fetch(`${jurisdiction}.events.json`)
       .then((resp) => resp.json())
       .then((evtjson) => {
         db.events = evtjson.reduce((o, e) => {o[e.id] = e; return o; }, {});
       }),
-    fetch(`${namespace}.items.json`)
+    fetch(`${jurisdiction}.items.json`)
       .then((resp) => resp.json())
       .then((itjson) => {
         db.items = itjson;
         settings.fuse = new Fuse(itjson, settings.options);
       }),
-    fetch(`${namespace}.bodies.json`)
+    fetch(`${jurisdiction}.bodies.json`)
       .then((resp) => resp.json())
       .then((bjson) => {
         db.bodies = bjson.reduce((o, b) => {o[b.id] = b.name; return o; }, {});
       })
-  ]);
+  ]).then(() => onType()); //call immediatly, so page refresh pulls results
+};
+
+const loadJurisdictions = () => {
+  const jEl = document.getElementById('jurisdiction');
+  jEl.addEventListener('change', onNsChange);
+  return fetch('jurisdictions.json')
+    .then((resp) => resp.json())
+    .then((jurisdictions) => {
+      jEl.innerHTML = '';
+      for (const [name, jur] of Object.entries(jurisdictions)) {
+        const opt = document.createElement('option');
+        opt.value = jur;
+        opt.innerHTML = name;
+        jEl.appendChild(opt);
+      }
+    })
+    .then(() => jEl.dispatchEvent(new Event('change')));
 };
 
 onNsChange = () => {
-  const ns = document.getElementById('namespace').value;
-  settings.namespace = ns;
-  return loadData(settings.namespace);
+  const ns = document.getElementById('jurisdiction').value;
+  settings.jurisdiction = ns;
+  return loadData(settings.jurisdiction);
+};
+
+const onType = () => {
+  const acEl = document.getElementById('autoComplete');
+  const resEl = document.getElementById('results');
+  const value = acEl.value;
+  resEl.innerHTML = '';
+  if (value.length < 1) {
+    return;
+  }
+  // TODO: configurable limit, lazy load, pagination, or similar
+  // so more results are available
+  const results = settings.fuse.search(value, { limit: 30 });
+  results.forEach(res => {
+    const result = makeResultElement(res.item);
+    resEl.appendChild(result);
+
+    //expand/close action - needs to be added to document before can check overflow
+    if (result.scrollHeight > result.clientHeight) {
+      result.classList.add('long');
+      result.onclick = () => result.classList.toggle('open');
+    }
+  });
 };
 
 const onload = () => {
-  onNsChange().then(() => {
-    const resEl = document.getElementById('results');
+  loadJurisdictions()
+    .finally(onNsChange())
+    .then(() => {
     const acEl = document.getElementById('autoComplete');
-    const nsEl = document.getElementById('namespace');
-    const onType = () => {
-      const value = acEl.value;
-      resEl.innerHTML = '';
-      if (value.length < 1) {
-        return;
-      }
-      // TODO: configurable limit, lazy load, pagination, or similar
-      // so more results are available
-      const results = settings.fuse.search(value, { limit: 30 });
-      results.forEach(res => {
-        const result = makeResultElement(res.item);
-        resEl.appendChild(result);
-
-        //expand/close action - needs to be added to document before can check overflow
-        if (result.scrollHeight > result.clientHeight) {
-          result.classList.add('long');
-          result.onclick = () => result.classList.toggle('open');
-        }
-      });
-    };
     // TODO: small delay, so it only does search after a pause
     // or: only after a certain number of characters?
     acEl.addEventListener('input', delay(onType, 200));
-    nsEl.addEventListener('change', onNsChange);
-    //call immediatly, so page refresh pulls results
-    onType();
   });
 };
 

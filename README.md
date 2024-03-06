@@ -4,6 +4,8 @@ These projects are built on top of the legistar api.
   
 [example of the data you can get from the api](documentation/sanjose.json)
 
+[build and run the web site locally](documentation/website.md)
+
 
 ## Structure
 
