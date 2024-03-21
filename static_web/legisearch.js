@@ -1,11 +1,13 @@
 const settings = {
   options: {
-    keys: [{ name: 'title', weight: 0.7 }, { name: 'action_text', weight: 0.3 }],
+    keys: [{ name: 'title', weight: 0.7 }, { name: 'action_text', weight: 0.6 }],
     includeScore: true,
-    distance: 5000
+    distance: 10000
   },
   maxResults: 50,
-  jurisdiction: 'mountainview'
+  jurisdiction: 'mountainview',
+  renderTimer: 0,
+  renderQueue: []
 };
 const db = {};
 
@@ -193,6 +195,23 @@ onNsChange = () => {
   return loadData(settings.jurisdiction);
 };
 
+const renderResult = (resEl) => {
+  const res = settings.renderQueue.shift();
+  if (!res) {
+    return;
+  }
+  const result = makeResultElement(res.item);
+  resEl.appendChild(result);
+
+  // expand/close action - needs to be added to document before can check overflow
+  if (result.scrollHeight > result.clientHeight) {
+    result.classList.add('long');
+    result.onclick = () => result.classList.toggle('open');
+  }
+
+  settings.renderTimer = setTimeout(() => renderResult(resEl), 150);
+};
+
 const onType = () => {
   const acEl = document.getElementById('autoComplete');
   const resEl = document.getElementById('results');
@@ -203,17 +222,10 @@ const onType = () => {
   }
   // TODO: configurable limit, lazy load, pagination, or similar
   // so more results are available
-  const results = settings.fuse.search(value, { limit: 30 });
-  results.forEach(res => {
-    const result = makeResultElement(res.item);
-    resEl.appendChild(result);
-
-    //expand/close action - needs to be added to document before can check overflow
-    if (result.scrollHeight > result.clientHeight) {
-      result.classList.add('long');
-      result.onclick = () => result.classList.toggle('open');
-    }
-  });
+  const results = settings.fuse.search(value, { limit: 50 });
+  clearTimeout(settings.renderTimer);
+  settings.renderQueue = results;
+  renderResult(resEl);
 };
 
 const onload = () => {
@@ -223,7 +235,7 @@ const onload = () => {
     const acEl = document.getElementById('autoComplete');
     // TODO: small delay, so it only does search after a pause
     // or: only after a certain number of characters?
-    acEl.addEventListener('input', delay(onType, 200));
+    acEl.addEventListener('input', delay(onType, 250));
   });
 };
 
