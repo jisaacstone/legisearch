@@ -1,6 +1,6 @@
 These projects are built on top of the legistar api.
 
-[legistar api notes](legistar.md)
+[legistar api notes](documentation/legistar.md)
   
 [example of the data you can get from the api](documentation/sanjose.json)
 

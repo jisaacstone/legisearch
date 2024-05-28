@@ -150,7 +150,8 @@ async def fetch_items(
         futures.append(client.get(iurl, params=iparams, timeout=TM))
 
     for event, item_resp in zip(events, await asyncio.gather(*futures)):
-        yield (event, item_resp.json())
+        item = item_resp.json()
+        yield (event, item)
     for event in noitemevents:
         yield (event, [])
 
@@ -174,7 +175,7 @@ def add_matter_data(namespace: str, item):
         data = json.load(request.urlopen(url))
         item['Matter'] = data
         for subcat in subcats:
-            url = '{BASEURL}{namespace}/Matters/{mid}/{subcat}'
+            url = f'{BASEURL}{namespace}/Matters/{mid}/{subcat}'
             data = json.load(request.urlopen(url))
             item[subcat] = data
 

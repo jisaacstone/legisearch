@@ -2,8 +2,9 @@ legistar api notes
 
 ## `/matters`
 
-not currently fetching directly from `/matters`
-but some matter info is pulled from `/eventitems`
+Not currently fetching directly from `/matters`
+Does not seem matters are much used.
+But some matter info is pulled from `/eventitems`
 
 | key | fetched | type | example value
 | --- | ------- | ---- | ----- |
