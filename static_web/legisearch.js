@@ -2,10 +2,13 @@ const settings = {
   options: {
     keys: [{ name: 'title', weight: 0.7 }, { name: 'action_text', weight: 0.6 }],
     includeScore: true,
-    distance: 10000
+    distance: 10000,
+    threshold: 0.9
   },
+  maxSearch: 500,
   maxResults: 50,
   jurisdiction: 'mountainview',
+  bodyIds: new Set(),
   renderTimer: 0,
   renderQueue: []
 };
@@ -24,25 +27,32 @@ function delay(callback, ms) {
 }
 
 // TODO: cleanup and enable
-const makeFilters = (filterEl, callback) => {
+const makeFilters = () => {
+  const filterEl = document.getElementById('filters');
+  filterEl.innerHTML = '';
+  const filterhead = document.createElement('h2');
+  filterhead.textContent = 'filters';
+  filterhead.addEventListener('click', () => filterEl.toggleClass('open'));
+  filterEl.appendChild(filterhead);
   const bodyFilter = document.createElement('div');
   bodyFilter.className = 'filterlist';
-  Object.keys(bodies).forEach((bodyId) => {
+  const allBodies = new Set(Object.values(db.events).map(e => e.body_id));
+  allBodies.forEach((bodyId) => {
     const filter = document.createElement('div');
     filter.className = 'filter';
-    filter.textContent = bodies[bodyId];
-    if (settings.bodies.has(bodyId)) {
+    filter.textContent = db.bodies[bodyId];
+    if (settings.bodyIds.has(bodyId)) {
       filter.classList.add('checked');
     }
     filter.onclick = () => {
       if (filter.classList.contains('checked')) {
         filter.classList.remove('checked');
-        settings.bodies.delete(bodyId);
+        settings.bodyIds.delete(bodyId);
       } else {
         filter.classList.add('checked');
-        settings.bodies.add(bodyId);
+        settings.bodyIds.add(bodyId);
       }
-      callback();
+      onType();
     };
     bodyFilter.appendChild(filter);
   });
@@ -52,6 +62,14 @@ const makeFilters = (filterEl, callback) => {
 // This is a bit garbage. TODO: cleanup, use library? make it faster
 const makeResultElement = (res) => {
   const event = db.events[res.event_id];
+  if (!event) {
+    return null;
+  }
+  // filter
+  if (settings.bodyIds.has(event.body_id)) {
+    return null;
+  }
+
   const body = db.bodies[event.body_id];
   const result = document.createElement('div');
   result.className = 'result';
@@ -192,40 +210,45 @@ const loadJurisdictions = () => {
 onNsChange = () => {
   const ns = document.getElementById('jurisdiction').value;
   settings.jurisdiction = ns;
-  return loadData(settings.jurisdiction);
+  return loadData(settings.jurisdiction).then(makeFilters);
 };
 
-const renderResult = (resEl) => {
+const renderResults = (resEl, toRender) => {
   const res = settings.renderQueue.shift();
+  var timeout = 0;
   if (!res) {
     return;
   }
   const result = makeResultElement(res.item);
-  resEl.appendChild(result);
+  if (result) {
+    toRender -= 1;
+    timeout = 250;
+    resEl.appendChild(result);
 
-  // expand/close action - needs to be added to document before can check overflow
-  if (result.scrollHeight > result.clientHeight) {
-    result.classList.add('long');
-    result.onclick = () => result.classList.toggle('open');
+    // expand/close action - needs to be added to document before can check overflow
+    if (result.scrollHeight > result.clientHeight) {
+      result.classList.add('long');
+      result.onclick = () => result.classList.toggle('open');
+    }
   }
 
-  settings.renderTimer = setTimeout(() => renderResult(resEl), 150);
+  settings.renderTimer = setTimeout(() => renderResults(resEl, toRender), timeout);
 };
 
 const onType = () => {
   const acEl = document.getElementById('autoComplete');
   const resEl = document.getElementById('results');
-  const value = acEl.value;
+  const value = acEl.value.trim();
   resEl.innerHTML = '';
-  if (value.length < 1) {
+  if (value.length <= 1) {
     return;
   }
   // TODO: configurable limit, lazy load, pagination, or similar
   // so more results are available
-  const results = settings.fuse.search(value, { limit: 50 });
+  const results = settings.fuse.search(value, { limit: settings.maxSearch });
   clearTimeout(settings.renderTimer);
   settings.renderQueue = results;
-  renderResult(resEl);
+  renderResults(resEl, settings.maxResults);
 };
 
 const onload = () => {
@@ -241,10 +264,5 @@ const onload = () => {
 
 window.onload = () => {
   const filEl = document.getElementById('filters');
-  // TODO: fix filetering, improve filtering
-  //makeFilters(filEl, onType);
-  //document.getElementById('filterhead').onclick = () => filEl.classList.toggle('open');
   onload();
 };
-
-
