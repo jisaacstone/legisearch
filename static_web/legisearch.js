@@ -31,16 +31,27 @@ const makeFilters = () => {
   filterEl.innerHTML = '';
   const filterhead = document.createElement('h2');
   filterhead.textContent = 'meeting bodies';
+  filterhead.classList.add('filterhead');
   filterhead.addEventListener('click', () => filterEl.classList.toggle('open'));
   filterEl.appendChild(filterhead);
   const bodyFilter = document.createElement('div');
   bodyFilter.className = 'filterlist';
   const filterAll = document.createElement('div');
-  filterAll.className = 'filter';
+  filterAll.className = 'filter allFilter';
   filterAll.textContent = 'All Meeting Bodies';
   if (settings.bodyIds.size === 0) {
     filterAll.classList.add('checked');
   }
+  filterAll.addEventListener('click', () => {
+    if (!filterAll.classList.contains('checked')) {
+      Array.prototype.forEach.call(bodyFilter.children, (child) => {
+        child.classList.remove('checked');
+      });
+      settings.bodyIds.clear();
+      filterAll.classList.add('checked');
+      onType();
+    }
+  });
   bodyFilter.appendChild(filterAll);
   const allBodies = new Set(Object.values(db.events).map(e => e.body_id));
   const sorted = Array.from(allBodies).toSorted((a, b) => db.bodies[a].localeCompare(db.bodies[b]));
@@ -258,10 +269,10 @@ const onType = () => {
   if (value.length <= 1) {
     return;
   }
+  clearTimeout(settings.renderTimer);
   // TODO: configurable limit, lazy load, pagination, or similar
   // so more results are available
   const results = settings.fuse.search(value, { limit: settings.maxSearch });
-  clearTimeout(settings.renderTimer);
   settings.renderQueue = results;
   renderResults(resEl, settings.maxResults);
 };
