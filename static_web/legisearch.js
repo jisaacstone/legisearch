@@ -26,18 +26,25 @@ function delay(callback, ms) {
   };
 }
 
-// TODO: cleanup and enable
 const makeFilters = () => {
   const filterEl = document.getElementById('filters');
   filterEl.innerHTML = '';
   const filterhead = document.createElement('h2');
-  filterhead.textContent = 'filters';
-  filterhead.addEventListener('click', () => filterEl.toggleClass('open'));
+  filterhead.textContent = 'meeting bodies';
+  filterhead.addEventListener('click', () => filterEl.classList.toggle('open'));
   filterEl.appendChild(filterhead);
   const bodyFilter = document.createElement('div');
   bodyFilter.className = 'filterlist';
+  const filterAll = document.createElement('div');
+  filterAll.className = 'filter';
+  filterAll.textContent = 'All Meeting Bodies';
+  if (settings.bodyIds.size === 0) {
+    filterAll.classList.add('checked');
+  }
+  bodyFilter.appendChild(filterAll);
   const allBodies = new Set(Object.values(db.events).map(e => e.body_id));
-  allBodies.forEach((bodyId) => {
+  const sorted = Array.from(allBodies).toSorted((a, b) => db.bodies[a].localeCompare(db.bodies[b]));
+  sorted.forEach((bodyId) => {
     const filter = document.createElement('div');
     filter.className = 'filter';
     filter.textContent = db.bodies[bodyId];
@@ -48,9 +55,13 @@ const makeFilters = () => {
       if (filter.classList.contains('checked')) {
         filter.classList.remove('checked');
         settings.bodyIds.delete(bodyId);
+        if (settings.bodyIds.size === 0) {
+          filterAll.classList.add('checked');
+        }
       } else {
         filter.classList.add('checked');
         settings.bodyIds.add(bodyId);
+        filterAll.classList.remove('checked');
       }
       onType();
     };
@@ -65,8 +76,8 @@ const makeResultElement = (res) => {
   if (!event) {
     return null;
   }
-  // filter
-  if (settings.bodyIds.has(event.body_id)) {
+  // meeting body filter
+  if (settings.bodyIds.size > 0 && !settings.bodyIds.has(event.body_id)) {
     return null;
   }
 
@@ -85,6 +96,7 @@ const makeResultElement = (res) => {
   datetime.textContent = event.meeting_time.substring(0, 10);
   doctype.appendChild(datetime);
   result.appendChild(doctype);
+
   //matter info
   const matters = document.createElement('div');
   matters.className = 'matter';
@@ -103,40 +115,43 @@ const makeResultElement = (res) => {
   //meeting links
   const links = document.createElement('div');
   links.className = 'resultLinks';
+  if (event.agenda_url) {
+    const ext = event.agenda_url.slice(-5);
+    const alink = document.createElement('a');
+    alink.setAttribute('href', event.agenda_url);
+    alink.textContent = ext[0] === '.' ? `${ext} agenda` : 'agenda';
+    links.appendChild(alink);
+  }
+
+  if (event.minutes_url) {
+    const ext = event.minutes_url.slice(-5);
+    const mlink = document.createElement('a');
+    mlink.setAttribute('href', event.minutes_url);
+    mlink.textContent = ext[0] === '.' ? `${ext} minutes` : 'minutes';
+    links.appendChild(mlink);
+  }
   const ilink = document.createElement('a');
   ilink.setAttribute('href', event.insite_url);
   ilink.textContent = 'info';
   links.appendChild(ilink);
 
-  var alink;
-  if (event.agenda_url) {
-    alink = document.createElement('a');
-    alink.setAttribute('href', event.agenda_url);
-  } else {
-    alink = document.createElement('span');
-    alink.className = 'not-available';
-  }
-  alink.textContent = 'agenda';
-  links.appendChild(alink);
-
-  var mlink;
-  if (event.minutes_url) {
-    mlink = document.createElement('a');
-    mlink.setAttribute('href', event.minutes_url);
-  } else {
-    mlink = document.createElement('span');
-    mlink.className = 'not-available';
-  }
-  mlink.textContent = 'minutes';
-  links.appendChild(mlink);
-
   result.appendChild(links);
 
+  var title = res.title;
+  var text = res.action_text;
+  if (!text && title.length > 100) {
+    // action text has been subsumed into a very long title. Let's split it back out
+    const firstdot = title.indexOf('.', 10);
+    const splitAt = firstdot < 10 ? 100 : firstdot;
+    title = res.title.slice(0, splitAt);
+    text = res.title.split(splitAt);
+  }
+
   //title
-  const title = document.createElement('div');
-  title.className = 'resultTitle';
-  title.innerHTML = `<div class="iagenda">${res.agenda_number}</div><div class="ititle">${res.title}</div>`;
-  result.appendChild(title);
+  const titleEl = document.createElement('div');
+  titleEl.className = 'resultTitle';
+  titleEl.innerHTML = `<div class="iagenda">${res.agenda_number}</div><div class="ititle">${title}</div>`;
+  result.appendChild(titleEl);
 
   //attachments
   if (res.matter_attachments !== '{}') {
@@ -155,7 +170,7 @@ const makeResultElement = (res) => {
   //description
   if (res.action_text) {
     const desc = document.createElement('div');
-    const lines = res.action_text.split('\n');
+    const lines = text.split('\n');
     desc.className = 'resultDescription';
     lines.forEach((line) => {
         const p = document.createElement('p');
