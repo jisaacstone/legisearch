@@ -44,10 +44,15 @@ a:visited {
   margin: 0.1rem;
   border-radius: 0.1rem 0.2rem;
   box-shadow: 0 0 0.3rem inset rgba(25, 25, 30, 0.2);
+  display: none;
 }
 .filter.checked {
   background-color: rgba(150, 200, 150, 0.1);
   box-shadow: 0 0 0.3rem inset rgba(25, 225, 30, 0.3);
+  display: flex;
+}
+.filter.rslts {
+  display: flex;
 }
 .result {
   max-width: 80rem;
@@ -130,4 +135,3 @@ a:visited {
 .passed:before {
   content: '\2611';
 }
-

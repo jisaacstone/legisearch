@@ -37,7 +37,7 @@ const makeFilters = () => {
   const bodyFilter = document.createElement('div');
   bodyFilter.className = 'filterlist';
   const filterAll = document.createElement('div');
-  filterAll.className = 'filter allFilter';
+  filterAll.className = 'filter allFilter rslts';
   filterAll.textContent = 'All Meeting Bodies';
   if (settings.bodyIds.size === 0) {
     filterAll.classList.add('checked');
@@ -55,9 +55,10 @@ const makeFilters = () => {
   bodyFilter.appendChild(filterAll);
   const allBodies = new Set(Object.values(db.events).map(e => e.body_id));
   const sorted = Array.from(allBodies).toSorted((a, b) => db.bodies[a].localeCompare(db.bodies[b]));
+  settings.bodyFilters = {};
   sorted.forEach((bodyId) => {
     const filter = document.createElement('div');
-    filter.className = 'filter';
+    filter.className = `filter b-${bodyId}`;
     filter.textContent = db.bodies[bodyId];
     if (settings.bodyIds.has(bodyId)) {
       filter.classList.add('checked');
@@ -77,6 +78,7 @@ const makeFilters = () => {
       onType();
     };
     bodyFilter.appendChild(filter);
+    settings.bodyFilters[bodyId] = filter;
   });
   filterEl.appendChild(bodyFilter);
 };
@@ -184,32 +186,6 @@ const makeResultElement = (res) => {
   return result;
 };
 
-const template = (item) => `
-<li class="result long">
-<div class="meetinginfo">
-  <div class="body b-${item.event.body_id}">${item.body_name}</div>
-  <div>${item.event.meeting_time}</div>
-</div>
-<div class="mtype">${item.matter_type}</div>
-<div class="mstatus">${item.matter_status}</div>
-<div class="resultLinks">
-  <a href="${item.event.agenda_url}">agenda</a>
-  <a href="${item.event.minutes_url}">minutes</a>
-  <a href="${item.event.insite_url}">info</a>
-</div>
-<div class="resultTitle">
-  <div class="iagenda">${item.agenda_number}</div>
-  <div class="ititle">${item.title}</div>
-</div>
-<div class="attachments">
-${item.attachments}
-</div>
-<div class="resultDescription">
-${item.action_text}
-</div>
-</li>
-`;
-
 const postFetch = () => {
   db.items.forEach((item) => {
     item.event = db.events[item.event_id] || {};
@@ -218,7 +194,9 @@ const postFetch = () => {
   });
   db.search = new MiniSearch({
     fields: ['title', 'action_text', 'body_name'],
-    storeFields: ['action_text', 'attachments', 'title', 'agenda_number', 'event', 'matter_type', 'matter_status', 'body_id', 'body_name', 'matter_attachments']
+    storeFields: ['action_text', 'attachments', 'title',
+      'agenda_number', 'event', 'matter_type', 'matter_status',
+      'body_id', 'body_name', 'matter_attachments']
   });
   db.search.addAll(db.items);
 };
@@ -295,6 +273,15 @@ const renderResults = (resEl, toRender) => {
   settings.renderTimer = setTimeout(() => renderResults(resEl, toRender), timeout);
 };
 
+const filterResult = (result) => {
+  if (settings.bodyIds.size > 0) {
+    if (!settings.bodyIds.has(result.event.body_id)) {
+      return false;
+    }
+  }
+  return true;
+};
+
 const onType = () => {
   const acEl = document.getElementById('autoComplete');
   const resEl = document.getElementById('results');
@@ -308,8 +295,23 @@ const onType = () => {
   // so more results are available
   //const results = settings.fuse.search(value, { limit: settings.maxSearch });
   const results = db.search.search(value);
-  settings.renderQueue = results;
+  setFilterStats(results);
+  settings.renderQueue = results.filter(filterResult);
   renderResults(resEl, settings.maxResults);
+};
+
+const setFilterStats = (results) => {
+  const bodyIds = new Set();
+  for (const res of results) {
+    bodyIds.add(res.event.body_id.toString());
+  }
+  for (const id in settings.bodyFilters) {
+    if (bodyIds.has(id)) {
+      settings.bodyFilters[id].classList.add('rslts');
+    } else {
+      settings.bodyFilters[id].classList.remove('rslts');
+    }
+  }
 };
 
 const onload = () => {
