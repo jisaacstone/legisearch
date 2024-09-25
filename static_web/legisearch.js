@@ -83,16 +83,7 @@ const makeFilters = () => {
 
 // This is a bit garbage. TODO: cleanup, use library? make it faster
 const makeResultElement = (res) => {
-  const event = db.events[res.event_id];
-  if (!event) {
-    return null;
-  }
-  // meeting body filter
-  if (settings.bodyIds.size > 0 && !settings.bodyIds.has(event.body_id)) {
-    return null;
-  }
-
-  const body = db.bodies[event.body_id];
+  const event = res.event;
   const result = document.createElement('div');
   result.className = 'result';
 
@@ -100,7 +91,7 @@ const makeResultElement = (res) => {
   const doctype = document.createElement('div');
   doctype.className = 'meetinginfo';
   const bodyel = document.createElement('div');
-  bodyel.textContent = body;
+  bodyel.textContent = res.body_name;
   bodyel.className = 'body b-' + event.body_id;
   doctype.appendChild(bodyel);
   const datetime = document.createElement('div');
@@ -193,7 +184,47 @@ const makeResultElement = (res) => {
   return result;
 };
 
+const template = (item) => `
+<li class="result long">
+<div class="meetinginfo">
+  <div class="body b-${item.event.body_id}">${item.body_name}</div>
+  <div>${item.event.meeting_time}</div>
+</div>
+<div class="mtype">${item.matter_type}</div>
+<div class="mstatus">${item.matter_status}</div>
+<div class="resultLinks">
+  <a href="${item.event.agenda_url}">agenda</a>
+  <a href="${item.event.minutes_url}">minutes</a>
+  <a href="${item.event.insite_url}">info</a>
+</div>
+<div class="resultTitle">
+  <div class="iagenda">${item.agenda_number}</div>
+  <div class="ititle">${item.title}</div>
+</div>
+<div class="attachments">
+${item.attachments}
+</div>
+<div class="resultDescription">
+${item.action_text}
+</div>
+</li>
+`;
+
+const postFetch = () => {
+  db.items.forEach((item) => {
+    item.event = db.events[item.event_id] || {};
+    item.body_name = item.event ? db.bodies[item.event.body_id] : null;
+    //item.action_text = item.action_text ? item.action_text.replaceAll('\n', '<p>') : '';
+  });
+  db.search = new MiniSearch({
+    fields: ['title', 'action_text', 'body_name'],
+    storeFields: ['action_text', 'attachments', 'title', 'agenda_number', 'event', 'matter_type', 'matter_status', 'body_id', 'body_name', 'matter_attachments']
+  });
+  db.search.addAll(db.items);
+};
+
 const loadData = (jurisdiction) => {
+  const resEl = document.getElementById('results');
   // 'items' is left and an array, because fuse expects that
   // others are changed to a key-value mapping for faster lookup
   return Promise.all([
@@ -206,14 +237,17 @@ const loadData = (jurisdiction) => {
       .then((resp) => resp.json())
       .then((itjson) => {
         db.items = itjson;
-        settings.fuse = new Fuse(itjson, settings.options);
+        //settings.fuse = new Fuse(itjson, settings.options);
       }),
     fetch(`${jurisdiction}.bodies.json`)
       .then((resp) => resp.json())
       .then((bjson) => {
         db.bodies = bjson.reduce((o, b) => {o[b.id] = b.name; return o; }, {});
       })
-  ]).then(() => onType()); //call immediatly, so page refresh pulls results
+  ]).then(() => {
+    postFetch();
+    onType();
+  });
 };
 
 const loadJurisdictions = () => {
@@ -222,7 +256,7 @@ const loadJurisdictions = () => {
   return fetch('jurisdictions.json')
     .then((resp) => resp.json())
     .then((jurisdictions) => {
-      jEl.innerHTML = '';
+      //jEl.innerHTML = '';
       for (const [name, jur] of Object.entries(jurisdictions)) {
         const opt = document.createElement('option');
         opt.value = jur;
@@ -245,7 +279,7 @@ const renderResults = (resEl, toRender) => {
   if (!res) {
     return;
   }
-  const result = makeResultElement(res.item);
+  const result = makeResultElement(res);
   if (result) {
     toRender -= 1;
     timeout = 250;
@@ -266,13 +300,14 @@ const onType = () => {
   const resEl = document.getElementById('results');
   const value = acEl.value.trim();
   resEl.innerHTML = '';
-  if (value.length <= 1) {
+  if (value.length <= 2) {
     return;
   }
   clearTimeout(settings.renderTimer);
   // TODO: configurable limit, lazy load, pagination, or similar
   // so more results are available
-  const results = settings.fuse.search(value, { limit: settings.maxSearch });
+  //const results = settings.fuse.search(value, { limit: settings.maxSearch });
+  const results = db.search.search(value);
   settings.renderQueue = results;
   renderResults(resEl, settings.maxResults);
 };
@@ -284,7 +319,7 @@ const onload = () => {
     const acEl = document.getElementById('autoComplete');
     // TODO: small delay, so it only does search after a pause
     // or: only after a certain number of characters?
-    acEl.addEventListener('input', delay(onType, 250));
+    acEl.addEventListener('input', delay(onType, 450));
   });
 };
 
