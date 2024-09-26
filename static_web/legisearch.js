@@ -10,6 +10,7 @@ const settings = {
   jurisdiction: 'mountainview',
   bodyIds: new Set(),
   renderTimer: 0,
+  renterDelay: 250,
   renderQueue: []
 };
 const db = {};
@@ -85,7 +86,6 @@ const makeFilters = () => {
 
 // This is a bit garbage. TODO: cleanup, use library? make it faster
 const makeResultElement = (res) => {
-  const event = res.event;
   const result = document.createElement('div');
   result.className = 'result';
 
@@ -93,11 +93,11 @@ const makeResultElement = (res) => {
   const doctype = document.createElement('div');
   doctype.className = 'meetinginfo';
   const bodyel = document.createElement('div');
-  bodyel.textContent = res.body_name;
-  bodyel.className = 'body b-' + event.body_id;
+  bodyel.textContent = res.b_name;
+  bodyel.className = 'body b-' + res.b_id;
   doctype.appendChild(bodyel);
   const datetime = document.createElement('div');
-  datetime.textContent = event.meeting_time.substring(0, 10);
+  datetime.textContent = res.meeting_time.substring(0, 10);
   doctype.appendChild(datetime);
   result.appendChild(doctype);
 
@@ -106,12 +106,12 @@ const makeResultElement = (res) => {
   matters.className = 'matter';
   if (res.matter_type) {
     const mtype = document.createElement('div');
-    mtype.textContent = res.matter_type;
-    mtype.className = 'mtype ' + res.matter_type.toLowerCase().replaceAll(' ', '-');
+    mtype.textContent = res.matter.type;
+    mtype.className = 'mtype ' + res.matter.type.toLowerCase().replaceAll(' ', '-');
     matters.appendChild(mtype);
     const mstatus = document.createElement('div');
-    mstatus.textContent = res.matter_status;
-    mstatus.className = 'mstatus ' + res.matter_status.toLowerCase().replaceAll(' ', '-');
+    mstatus.textContent = res.matter.status;
+    mstatus.className = 'mstatus ' + res.matter.status.toLowerCase().replaceAll(' ', '-');
     matters.appendChild(mstatus);
   }
   result.appendChild(matters);
@@ -119,30 +119,30 @@ const makeResultElement = (res) => {
   //meeting links
   const links = document.createElement('div');
   links.className = 'resultLinks';
-  if (event.agenda_url) {
-    const ext = event.agenda_url.slice(-5);
+  if (res.agenda) {
+    const ext = res.agenda.slice(-5);
     const alink = document.createElement('a');
-    alink.setAttribute('href', event.agenda_url);
+    alink.setAttribute('href', res.agenda);
     alink.textContent = ext[0] === '.' ? `${ext} agenda` : 'agenda';
     links.appendChild(alink);
   }
 
-  if (event.minutes_url) {
-    const ext = event.minutes_url.slice(-5);
+  if (res.minutes) {
+    const ext = res.minutes.slice(-5);
     const mlink = document.createElement('a');
-    mlink.setAttribute('href', event.minutes_url);
+    mlink.setAttribute('href', res.minutes);
     mlink.textContent = ext[0] === '.' ? `${ext} minutes` : 'minutes';
     links.appendChild(mlink);
   }
   const ilink = document.createElement('a');
-  ilink.setAttribute('href', event.insite_url);
+  ilink.setAttribute('href', res.insite);
   ilink.textContent = 'info';
   links.appendChild(ilink);
 
   result.appendChild(links);
 
   var title = res.title;
-  var text = res.action_text;
+  var text = res.text;
   if (!text && title.length > 100) {
     // action text has been subsumed into a very long title. Let's split it back out
     const firstdot = title.indexOf('.', 10);
@@ -154,25 +154,26 @@ const makeResultElement = (res) => {
   //title
   const titleEl = document.createElement('div');
   titleEl.className = 'resultTitle';
-  titleEl.innerHTML = `<div class="iagenda">${res.agenda_number}</div><div class="ititle">${title}</div>`;
+  titleEl.innerHTML = `<div class="iagenda">${res.a_num}</div><div class="ititle">${title}</div>`;
   result.appendChild(titleEl);
 
   //attachments
-  if (res.matter_attachments !== '{}') {
-    const attachments = JSON.parse(res.matter_attachments);
+  const atts = Object.keys(res.matter.attach);
+
+  if (atts.length > 0) {
     const atta = document.createElement('div');
     atta.className = 'attachments';
-    Object.keys(attachments).forEach((name) => {
+    atts.forEach((name) => {
       const link = document.createElement('a');
       link.textContent = '\u{1F4CE}' + name;
-      link.setAttribute('href', attachments[name]);
+      link.setAttribute('href', atts[name]);
       atta.appendChild(link);
     });
     result.appendChild(atta);
   }
 
   //description
-  if (res.action_text) {
+  if (text) {
     const desc = document.createElement('div');
     const lines = text.split('\n');
     desc.className = 'resultDescription';
@@ -187,16 +188,11 @@ const makeResultElement = (res) => {
 };
 
 const postFetch = () => {
-  db.items.forEach((item) => {
-    item.event = db.events[item.event_id] || {};
-    item.body_name = item.event ? db.bodies[item.event.body_id] : null;
-    //item.action_text = item.action_text ? item.action_text.replaceAll('\n', '<p>') : '';
-  });
   db.search = new MiniSearch({
-    fields: ['title', 'action_text', 'body_name'],
-    storeFields: ['action_text', 'attachments', 'title',
-      'agenda_number', 'event', 'matter_type', 'matter_status',
-      'body_id', 'body_name', 'matter_attachments']
+    fields: ['title', 'action_text', 'b_name'],
+    storeFields: ['text', 'attachments', 'title',
+      'a_num', 'matter', 'meeting_time', 'year', 'month',
+      'b_id', 'b_name', 'agenda', 'minutes', 'insite']
   });
   db.search.addAll(db.items);
 };
@@ -206,16 +202,10 @@ const loadData = (jurisdiction) => {
   // 'items' is left and an array, because fuse expects that
   // others are changed to a key-value mapping for faster lookup
   return Promise.all([
-    fetch(`${jurisdiction}.events.json`)
-      .then((resp) => resp.json())
-      .then((evtjson) => {
-        db.events = evtjson.reduce((o, e) => {o[e.id] = e; return o; }, {});
-      }),
     fetch(`${jurisdiction}.items.json`)
       .then((resp) => resp.json())
       .then((itjson) => {
         db.items = itjson;
-        //settings.fuse = new Fuse(itjson, settings.options);
       }),
     fetch(`${jurisdiction}.bodies.json`)
       .then((resp) => resp.json())
@@ -260,7 +250,7 @@ const renderResults = (resEl, toRender) => {
   const result = makeResultElement(res);
   if (result) {
     toRender -= 1;
-    timeout = 250;
+    timeout = settings.renderDelay;
     resEl.appendChild(result);
 
     // expand/close action - needs to be added to document before can check overflow
@@ -275,7 +265,7 @@ const renderResults = (resEl, toRender) => {
 
 const filterResult = (result) => {
   if (settings.bodyIds.size > 0) {
-    if (!settings.bodyIds.has(result.event.body_id)) {
+    if (!settings.bodyIds.has(result.b_id)) {
       return false;
     }
   }
@@ -303,7 +293,7 @@ const onType = () => {
 const setFilterStats = (results) => {
   const bodyIds = new Set();
   for (const res of results) {
-    bodyIds.add(res.event.body_id.toString());
+    bodyIds.add(res.b_id.toString());
   }
   for (const id in settings.bodyFilters) {
     if (bodyIds.has(id)) {
@@ -319,13 +309,10 @@ const onload = () => {
     .finally(onNsChange())
     .then(() => {
     const acEl = document.getElementById('autoComplete');
-    // TODO: small delay, so it only does search after a pause
-    // or: only after a certain number of characters?
-    acEl.addEventListener('input', delay(onType, 450));
+    acEl.addEventListener('input', delay(onType, settings.renderDelay));
   });
 };
 
 window.onload = () => {
-  const filEl = document.getElementById('filters');
   onload();
 };

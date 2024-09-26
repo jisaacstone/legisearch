@@ -12,6 +12,6 @@ if [ ! -f "${dbname}" ]; then
   exit 1
 fi
 
-sqlite3 $1.db '.mode json' ".once static_web/${1}.events.json" 'select * from events;'
-sqlite3 $1.db '.mode json' ".once static_web/${1}.items.json" 'select * from items;'
-sqlite3 $1.db '.mode json' ".once static_web/${1}.bodies.json" 'select * from bodies;'
+sqlite3 "$1.db" '.mode json' ".once static_web/${1}.events.json" 'select * from events;'
+sqlite3 "$1.db" '.mode json' ".once static_web/${1}.items.json" 'select * from items;'
+sqlite3 "$1.db" '.mode json' ".once static_web/${1}.bodies.json" 'select * from bodies;'
