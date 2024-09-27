@@ -8,12 +8,21 @@ const settings = {
   maxSearch: 500,
   maxResults: 50,
   jurisdiction: 'mountainview',
-  bodyIds: new Set(),
   renderTimer: 0,
   renterDelay: 250,
-  renderQueue: []
 };
 const db = {};
+const state = {
+  filters: {
+    bodyIds: new Set(),
+    years: new Set(),
+  },
+  results: {
+    items: [],
+    bodyIds: new Set(),
+    years: new Set(),
+  },
+};
 
 // delay search for a few milliseconds, so it only executes when there is a pause in typing
 function delay(callback, ms) {
@@ -27,61 +36,42 @@ function delay(callback, ms) {
   };
 }
 
-const makeFilters = () => {
-  const filterEl = document.getElementById('filters');
-  filterEl.innerHTML = '';
-  const filterhead = document.createElement('h2');
-  filterhead.textContent = 'meeting bodies';
-  filterhead.classList.add('filterhead');
-  filterhead.addEventListener('click', () => filterEl.classList.toggle('open'));
-  filterEl.appendChild(filterhead);
-  const bodyFilter = document.createElement('div');
-  bodyFilter.className = 'filterlist';
-  const filterAll = document.createElement('div');
-  filterAll.className = 'filter allFilter rslts';
-  filterAll.textContent = 'All Meeting Bodies';
-  if (settings.bodyIds.size === 0) {
-    filterAll.classList.add('checked');
+const makeFilters = (results) => {
+  const bids = new Set(), yrs = new Set();
+  const bEl = document.getElementById('body-filter');
+  const yEl = document.getElementById('year-filter');
+  bEl.innerHTML = '';
+  yEl.innerHTML = '';
+  for (const res of results) {
+    bids.add(res.b_id);
+    yrs.add(+res.year);
   }
-  filterAll.addEventListener('click', () => {
-    if (!filterAll.classList.contains('checked')) {
-      Array.prototype.forEach.call(bodyFilter.children, (child) => {
-        child.classList.remove('checked');
-      });
-      settings.bodyIds.clear();
-      filterAll.classList.add('checked');
-      onType();
+  for (const yr of Array.from(yrs).toSorted()) {
+    makeFilterEl(state.filters.years, yEl, yr.toString());
+  }
+  for (const bid of bids) {
+    makeFilterEl(state.filters.bodyIds, bEl, bid, db.bodies[bid]);
+  }
+};
+
+const makeFilterEl = (filterSet, parentEl, id, text) => {
+  const filterEl = document.createElement('div');
+  if (!text) {
+    text = id;
+  }
+  filterEl.classList.add('filter');
+  filterEl.textContent = text;
+  filterEl.onclick = () => {
+    if (filterEl.classList.contains('checked')) {
+      filterEl.classList.remove('checked');
+      filterSet.delete(id);
+    } else {
+      filterEl.classList.add('checked');
+      filterSet.add(id);
     }
-  });
-  bodyFilter.appendChild(filterAll);
-  const allBodies = new Set(Object.values(db.events).map(e => e.body_id));
-  const sorted = Array.from(allBodies).toSorted((a, b) => db.bodies[a].localeCompare(db.bodies[b]));
-  settings.bodyFilters = {};
-  sorted.forEach((bodyId) => {
-    const filter = document.createElement('div');
-    filter.className = `filter b-${bodyId}`;
-    filter.textContent = db.bodies[bodyId];
-    if (settings.bodyIds.has(bodyId)) {
-      filter.classList.add('checked');
-    }
-    filter.onclick = () => {
-      if (filter.classList.contains('checked')) {
-        filter.classList.remove('checked');
-        settings.bodyIds.delete(bodyId);
-        if (settings.bodyIds.size === 0) {
-          filterAll.classList.add('checked');
-        }
-      } else {
-        filter.classList.add('checked');
-        settings.bodyIds.add(bodyId);
-        filterAll.classList.remove('checked');
-      }
-      onType();
-    };
-    bodyFilter.appendChild(filter);
-    settings.bodyFilters[bodyId] = filter;
-  });
-  filterEl.appendChild(bodyFilter);
+    onFilterChange();
+  };
+  parentEl.appendChild(filterEl);
 };
 
 // This is a bit garbage. TODO: cleanup, use library? make it faster
@@ -97,7 +87,7 @@ const makeResultElement = (res) => {
   bodyel.className = 'body b-' + res.b_id;
   doctype.appendChild(bodyel);
   const datetime = document.createElement('div');
-  datetime.textContent = res.meeting_time.substring(0, 10);
+  datetime.textContent = res.meeting_time ? res.meeting_time.substring(0, 10) : '';
   doctype.appendChild(datetime);
   result.appendChild(doctype);
 
@@ -142,13 +132,13 @@ const makeResultElement = (res) => {
   result.appendChild(links);
 
   var title = res.title;
-  var text = res.text;
-  if (!text && title.length > 100) {
+  var text = res.text || '';
+  if (title.length > 100) {
+    const match = title.substring(10).match(/[.;?]\s/);
+    const splitAt = match ? match.index + 10 : title.indexOf(' ', 100);
     // action text has been subsumed into a very long title. Let's split it back out
-    const firstdot = title.indexOf('.', 10);
-    const splitAt = firstdot < 10 ? 100 : firstdot;
     title = res.title.slice(0, splitAt);
-    text = res.title.split(splitAt);
+    text = res.title.slice(splitAt) + '\n' + text;
   }
 
   //title
@@ -219,30 +209,20 @@ const loadData = (jurisdiction) => {
 };
 
 const loadJurisdictions = () => {
+  // not loading anymore, so state is cached by browser
+  // and I don't have to deal with the history api
   const jEl = document.getElementById('jurisdiction');
   jEl.addEventListener('change', onNsChange);
-  return fetch('jurisdictions.json')
-    .then((resp) => resp.json())
-    .then((jurisdictions) => {
-      //jEl.innerHTML = '';
-      for (const [name, jur] of Object.entries(jurisdictions)) {
-        const opt = document.createElement('option');
-        opt.value = jur;
-        opt.innerHTML = name;
-        jEl.appendChild(opt);
-      }
-    })
-    .then(() => jEl.dispatchEvent(new Event('change')));
 };
 
 onNsChange = () => {
   const ns = document.getElementById('jurisdiction').value;
   settings.jurisdiction = ns;
-  return loadData(settings.jurisdiction).then(makeFilters);
+  return loadData(settings.jurisdiction);
 };
 
 const renderResults = (resEl, toRender) => {
-  const res = settings.renderQueue.shift();
+  const res = state.renderQueue.shift();
   var timeout = 0;
   if (!res) {
     return;
@@ -264,8 +244,13 @@ const renderResults = (resEl, toRender) => {
 };
 
 const filterResult = (result) => {
-  if (settings.bodyIds.size > 0) {
-    if (!settings.bodyIds.has(result.b_id)) {
+  if (state.filters.bodyIds.size > 0) {
+    if (!state.filters.bodyIds.has(result.b_id)) {
+      return false;
+    }
+  }
+  if (state.filters.years.size > 0) {
+    if (!state.filters.years.has(result.year)) {
       return false;
     }
   }
@@ -276,37 +261,27 @@ const onType = () => {
   const acEl = document.getElementById('autoComplete');
   const resEl = document.getElementById('results');
   const value = acEl.value.trim();
+  clearTimeout(settings.renderTimer);
   resEl.innerHTML = '';
   if (value.length <= 2) {
     return;
   }
-  clearTimeout(settings.renderTimer);
-  // TODO: configurable limit, lazy load, pagination, or similar
-  // so more results are available
-  //const results = settings.fuse.search(value, { limit: settings.maxSearch });
   const results = db.search.search(value);
-  setFilterStats(results);
-  settings.renderQueue = results.filter(filterResult);
+  makeFilters(results);
+  state.results.items = results;
+  onFilterChange();
+};
+
+const onFilterChange = () => {
+  const resEl = document.getElementById('results');
+  resEl.innerHTML = '';
+  state.renderQueue = state.results.items.filter(filterResult);
   renderResults(resEl, settings.maxResults);
 };
 
-const setFilterStats = (results) => {
-  const bodyIds = new Set();
-  for (const res of results) {
-    bodyIds.add(res.b_id.toString());
-  }
-  for (const id in settings.bodyFilters) {
-    if (bodyIds.has(id)) {
-      settings.bodyFilters[id].classList.add('rslts');
-    } else {
-      settings.bodyFilters[id].classList.remove('rslts');
-    }
-  }
-};
-
 const onload = () => {
-  loadJurisdictions()
-    .finally(onNsChange())
+  loadJurisdictions();
+  onNsChange()
     .then(() => {
     const acEl = document.getElementById('autoComplete');
     acEl.addEventListener('input', delay(onType, settings.renderDelay));
