@@ -13,10 +13,6 @@ const settings = {
 };
 const db = {};
 const state = {
-  filters: {
-    bodyIds: new Set(),
-    years: new Set(),
-  },
   results: {
     items: [],
     bodyIds: new Set(),
@@ -25,54 +21,87 @@ const state = {
 };
 
 // delay search for a few milliseconds, so it only executes when there is a pause in typing
-function delay(callback, ms) {
-  var timer = 0;
+const delay = (callback, ms) => {
+  let timer = 0;
   return function() {
-    var context = this, args = arguments;
+    let context = this, args = arguments;
     clearTimeout(timer);
     timer = setTimeout(function () {
       callback.apply(context, args);
     }, ms || 0);
   };
-}
-
-const makeFilters = (results) => {
-  const bids = new Set(), yrs = new Set();
-  const bEl = document.getElementById('body-filter');
-  const yEl = document.getElementById('year-filter');
-  bEl.innerHTML = '';
-  yEl.innerHTML = '';
-  for (const res of results) {
-    bids.add(res.b_id);
-    yrs.add(+res.year);
-  }
-  for (const yr of Array.from(yrs).toSorted()) {
-    makeFilterEl(state.filters.years, yEl, yr.toString());
-  }
-  for (const bid of bids) {
-    makeFilterEl(state.filters.bodyIds, bEl, bid, db.bodies[bid]);
-  }
 };
 
-const makeFilterEl = (filterSet, parentEl, id, text) => {
-  const filterEl = document.createElement('div');
-  if (!text) {
-    text = id;
-  }
-  filterEl.classList.add('filter');
-  filterEl.textContent = text;
-  filterEl.onclick = () => {
-    if (filterEl.classList.contains('checked')) {
-      filterEl.classList.remove('checked');
-      filterSet.delete(id);
-    } else {
-      filterEl.classList.add('checked');
-      filterSet.add(id);
+
+const filters = (() => {
+  const bodyIds = new Set(),
+        years = new Set();
+  let  hasAttachment = false;
+
+  const makeElements = (results) => {
+    const bids = new Set(),
+          yrs = new Set(),
+          bEl = document.getElementById('body-filter'),
+          yEl = document.getElementById('year-filter');
+    bEl.innerHTML = '';
+    yEl.innerHTML = '';
+    for (const res of results) {
+      bids.add(res.b_id);
+      yrs.add(+res.year);
     }
-    onFilterChange();
+    for (const yr of Array.from(yrs).toSorted()) {
+      makeFilterEl(years, yEl, yr.toString());
+    }
+    for (const bid of bids) {
+      makeFilterEl(bodyIds, bEl, bid, db.bodies[bid]);
+    }
   };
-  parentEl.appendChild(filterEl);
-};
+
+  const makeFilterEl = (filterSet, parentEl, id, text) => {
+    const filterEl = document.createElement('div');
+    if (!text) {
+      text = id;
+    }
+    filterEl.classList.add('filter');
+    filterEl.textContent = text;
+    filterEl.onclick = () => {
+      if (filterEl.classList.contains('checked')) {
+        filterEl.classList.remove('checked');
+        filterSet.delete(id);
+      } else {
+        filterEl.classList.add('checked');
+        filterSet.add(id);
+      }
+      onFilterChange();
+    };
+    parentEl.appendChild(filterEl);
+  };
+
+  const filterResult = (result) => {
+    if (bodyIds.size > 0) {
+      if (!bodyIds.has(result.b_id)) {
+        return false;
+      }
+    }
+    if (years.size > 0) {
+      if (!years.has(result.year)) {
+        return false;
+      }
+    }
+    if (hasAttachment) {
+      if (Object.keys(result.matter.attach).length == 0) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  return {
+    makeElements: makeElements,
+    run: filterResult
+  };
+})();
+
 
 // This is a bit garbage. TODO: cleanup, use library? make it faster
 const makeResultElement = (res) => {
@@ -131,8 +160,8 @@ const makeResultElement = (res) => {
 
   result.appendChild(links);
 
-  var title = res.title;
-  var text = res.text || '';
+  let title = res.title;
+  let text = res.text || '';
   if (title.length > 100) {
     const match = title.substring(10).match(/[.;?]\s/);
     const splitAt = match ? match.index + 10 : title.indexOf(' ', 100);
@@ -187,43 +216,47 @@ const postFetch = () => {
   db.search.addAll(db.items);
 };
 
-const loadData = (jurisdiction) => {
-  const resEl = document.getElementById('results');
-  // 'items' is left and an array, because fuse expects that
-  // others are changed to a key-value mapping for faster lookup
-  return Promise.all([
-    fetch(`${jurisdiction}.items.json`)
-      .then((resp) => resp.json())
-      .then((itjson) => {
-        db.items = itjson;
-      }),
-    fetch(`${jurisdiction}.bodies.json`)
-      .then((resp) => resp.json())
-      .then((bjson) => {
-        db.bodies = bjson.reduce((o, b) => {o[b.id] = b.name; return o; }, {});
-      })
-  ]).then(() => {
-    postFetch();
-    onType();
-  });
-};
+const jurisdictions = (() => {
+  let selectedJurisdiction = 'mountainview';
 
-const loadJurisdictions = () => {
-  // not loading anymore, so state is cached by browser
-  // and I don't have to deal with the history api
-  const jEl = document.getElementById('jurisdiction');
-  jEl.addEventListener('change', onNsChange);
-};
+  const loadData = (jurisdiction) => {
+    return Promise.all([
+      fetch(`${jurisdiction}.items.json`)
+        .then((resp) => resp.json())
+        .then((itjson) => {
+          db.items = itjson;
+        }),
+      fetch(`${jurisdiction}.bodies.json`)
+        .then((resp) => resp.json())
+        .then((bjson) => {
+          db.bodies = bjson.reduce((o, b) => {o[b.id] = b.name; return o; }, {});
+        })
+    ]).then(() => {
+      postFetch();
+      onType();
+    });
+  };
 
-onNsChange = () => {
-  const ns = document.getElementById('jurisdiction').value;
-  settings.jurisdiction = ns;
-  return loadData(settings.jurisdiction);
-};
+  const loadJurisdictions = () => {
+    // not loading anymore, so state is cached by browser
+    // and I don't have to deal with the history api
+    const jEl = document.getElementById('jurisdiction');
+    jEl.addEventListener('change', onJChange);
+    return onJChange();
+  };
+
+  onJChange = () => {
+    const ns = document.getElementById('jurisdiction').value;
+    selectedJurisdiction = ns;
+    return loadData(settings.jurisdiction);
+  };
+
+  return { load: loadJurisdictions };
+})();
 
 const renderResults = (resEl, toRender) => {
   const res = state.renderQueue.shift();
-  var timeout = 0;
+  let timeout = 0;
   if (!res) {
     return;
   }
@@ -243,20 +276,6 @@ const renderResults = (resEl, toRender) => {
   settings.renderTimer = setTimeout(() => renderResults(resEl, toRender), timeout);
 };
 
-const filterResult = (result) => {
-  if (state.filters.bodyIds.size > 0) {
-    if (!state.filters.bodyIds.has(result.b_id)) {
-      return false;
-    }
-  }
-  if (state.filters.years.size > 0) {
-    if (!state.filters.years.has(result.year)) {
-      return false;
-    }
-  }
-  return true;
-};
-
 const onType = () => {
   const acEl = document.getElementById('autoComplete');
   const resEl = document.getElementById('results');
@@ -267,7 +286,7 @@ const onType = () => {
     return;
   }
   const results = db.search.search(value);
-  makeFilters(results);
+  filters.makeElements(results);
   state.results.items = results;
   onFilterChange();
 };
@@ -275,14 +294,12 @@ const onType = () => {
 const onFilterChange = () => {
   const resEl = document.getElementById('results');
   resEl.innerHTML = '';
-  state.renderQueue = state.results.items.filter(filterResult);
+  state.renderQueue = state.results.items.filter(filters.run);
   renderResults(resEl, settings.maxResults);
 };
 
 const onload = () => {
-  loadJurisdictions();
-  onNsChange()
-    .then(() => {
+  jurisdictions.load().then(() => {
     const acEl = document.getElementById('autoComplete');
     acEl.addEventListener('input', delay(onType, settings.renderDelay));
   });
