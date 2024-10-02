@@ -1,3 +1,6 @@
+html {
+  font-size: 1.4rem;
+}
 a, span {
   display: inline-block;
 }
@@ -59,7 +62,7 @@ a:visited {
 .filter {
   flex-grow: 1;
   cursor: pointer;
-  padding: 0.1rem;
+  padding: 0.3rem;
   margin: 0.1rem;
   border-radius: 0.1rem 0.2rem;
   box-shadow: 0 0 0.3rem inset rgba(25, 25, 30, 0.2);

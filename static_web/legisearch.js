@@ -185,7 +185,7 @@ const makeResultElement = (res) => {
     atts.forEach((name) => {
       const link = document.createElement('a');
       link.textContent = '\u{1F4CE}' + name;
-      link.setAttribute('href', atts[name]);
+      link.setAttribute('href', res.matter.attach[name]);
       atta.appendChild(link);
     });
     result.appendChild(atta);
