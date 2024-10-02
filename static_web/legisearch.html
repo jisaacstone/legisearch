@@ -1,35 +1,33 @@
 <!DOCTYPE HTML>
 <html>
   <head>
-    <title>Legisearch</title>
+    <title>Legisearch - Search Meating Minutes</title>
 <link rel="stylesheet" href="legisearch.css">
 <script src="https://cdn.jsdelivr.net/npm/minisearch@7.1.0/dist/umd/index.min.js"></script>
 <script src="legisearch.js"> </script>
   </head>
   <body>
     <div class="container">
-      <header class="header">
-        <h1>Search City Meeting Minutes</h1>
-      </header>
-      <div class="body">
-        <div class="autoComplete_wrapper">
-          <label for="autoComplete">Search &#x1F50E;</label>
-          <input id="autoComplete" type="text" tabindex="1">
-          <label for="jurisdiction">Jurisdiction</label>
-          <select name="jurisdiction" id="jurisdiction">
-            <option value="mountainview">Mountain View</option>
-            <option value="sanjose">San Jose</option>
-            <option value="bart">BART</option>
-            <option value="sunnyvaleca">Sunnyvale</option>
-          </select>
-        </div>
-        <div id="filters">
-          <div id="body-filter" class="filtergroup"></div>
-          <div id="year-filter" class="filtergroup"></div>
-        </div>
-        <div id="results">
-        </div>
-      </div>
+      <section id="header">
+        <h1>Search Meeting Minutes</h1>
+      </section>
+      <section id="search">
+        <label for="jurisdiction">Jurisdiction</label>
+        <select name="jurisdiction" id="jurisdiction">
+          <option value="mountainview">Mountain View</option>
+          <option value="sanjose">San Jose</option>
+          <option value="bart">BART</option>
+          <option value="sunnyvaleca">Sunnyvale</option>
+        </select>
+        <label for="autoComplete">&#x1F50E;</label>
+        <input id="autoComplete" type="text" tabindex="1">
+      </section>
+      <section id="filters">
+        <div id="body-filter" class="filtergroup"></div>
+        <div id="year-filter" class="filtergroup"></div>
+      </section>
+      <section id="results">
+      </section>
     </div>
   </body>
 </html>

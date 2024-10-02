@@ -7,35 +7,54 @@ a:hover {
 a:visited {
   color: #f89;
 }
-.header {
-  text-align: center;
+.container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
 }
-.autocomplete-wrapper {
-  font-size: x-large;
-  margin: 1rem;
+
+#header {
+  text-align: center;
+  width: 100%;
+}
+#search {
+  flex-grow: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: min(3rem, 8vh);
+}
+#search input, #search select {
+  font-size: min(3rem, 8vh);
+}
+#search label {
+  padding: 0.5rem;
 }
 #autoComplete {
-  font-size: x-large;
-  height: 1.5em;
+  flex-grow: 2;
+  min-width: 30rem;
+  height: min(2.7rem, 11vh);
   border: 0.5rem double rgba(13, 86, 12, 0.3);
 }
 #filters {
   display: flex;
-  flex-wrap: wrap;
+  flex-flow: row;
+  justify-content: center;
+  align-items: center;
+  align-content: stretch;
   max-height: 8rem;
   overflow-x: hidden;
-  box-shadow: 0 -1rem 1rem -1rem inset rgba(49, 12, 23, 0.3);
-  margin-bottom: 0.5rem;
+  border-bottom: 0.5rem double rgba(13, 86, 12, 0.3);
 }
 .filterhead {
   cursor: pointer;
 }
-#filters.open {
-  height: initial;
-}
-.filterlist {
+.filtergroup {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  align-content: stretch;
 }
 .filter {
   flex-grow: 1;
@@ -48,11 +67,6 @@ a:visited {
 .filter.checked {
   background-color: rgba(150, 200, 150, 0.1);
   box-shadow: 0 0 0.3rem inset rgba(25, 225, 30, 0.3);
-}
-.filtergroup {
-  display: flex;
-  flex-wrap: wrap;
-  max-width: 50%;
 }
 .result {
   max-width: 80rem;
