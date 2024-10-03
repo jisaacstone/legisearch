@@ -7,7 +7,6 @@ const settings = {
   },
   maxSearch: 500,
   maxResults: 50,
-  jurisdiction: 'mountainview',
   renderTimer: 0,
   renterDelay: 250,
 };
@@ -248,7 +247,7 @@ const jurisdictions = (() => {
   onJChange = () => {
     const ns = document.getElementById('jurisdiction').value;
     selectedJurisdiction = ns;
-    return loadData(settings.jurisdiction);
+    return loadData(selectedJurisdiction);
   };
 
   return { load: loadJurisdictions };
