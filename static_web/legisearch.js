@@ -37,6 +37,11 @@ const filters = (() => {
         years = new Set();
   let  hasAttachment = false;
 
+  const clear = () => {
+    bodyIds.clear();
+    years.clear();
+  };
+
   const makeElements = (results) => {
     const bids = new Set(),
           yrs = new Set(),
@@ -51,8 +56,14 @@ const filters = (() => {
     for (const yr of Array.from(yrs).toSorted()) {
       makeFilterEl(years, yEl, yr.toString());
     }
+    for (const yr of years.difference(yrs)) {
+      years.delete(yr);
+    }
     for (const bid of bids) {
       makeFilterEl(bodyIds, bEl, bid, db.bodies[bid]);
+    }
+    for (const bid of bodyIds.difference(bids)) {
+      bodyIds.delete(bid);
     }
   };
 
@@ -97,9 +108,26 @@ const filters = (() => {
 
   return {
     makeElements: makeElements,
-    run: filterResult
+    clear: clear,
+    fn: filterResult
   };
 })();
+
+
+const trySplitLongTitle = (text) => {
+  const firstLowercase = text.match(/[a-z]/);
+  if (firstLowercase && firstLowercase.index > 15) {
+    // title is ALL CAPS, body text is lowercase
+    return firstLowercase.index;
+  }
+  // try split on punctuation
+  const firstPunctuation = text.substring(10).match(/[.;?]\s/);
+  if (firstPunctuation) {
+    return firstPunctuation.index + 11;
+  }
+  // just split on some space
+  return text.indexOf(' ', 100);
+};
 
 
 // This is a bit garbage. TODO: cleanup, use library? make it faster
@@ -162,9 +190,8 @@ const makeResultElement = (res) => {
   let title = res.title;
   let text = res.text || '';
   if (title.length > 100) {
-    const match = title.substring(10).match(/[.;?]\s/);
-    const splitAt = match ? match.index + 10 : title.indexOf(' ', 100);
     // action text has been subsumed into a very long title. Let's split it back out
+    const splitAt = trySplitLongTitle(title);
     title = res.title.slice(0, splitAt);
     text = res.title.slice(splitAt) + '\n' + text;
   }
@@ -213,6 +240,7 @@ const postFetch = () => {
       'b_id', 'b_name', 'agenda', 'minutes', 'insite']
   });
   db.search.addAll(db.items);
+  filters.clear();
 };
 
 const jurisdictions = (() => {
@@ -293,7 +321,7 @@ const onType = () => {
 const onFilterChange = () => {
   const resEl = document.getElementById('results');
   resEl.innerHTML = '';
-  state.renderQueue = state.results.items.filter(filters.run);
+  state.renderQueue = state.results.items.filter(filters.fn);
   renderResults(resEl, settings.maxResults);
 };
 
