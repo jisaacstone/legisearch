@@ -8,22 +8,20 @@ const settings = {
   maxSearch: 500,
   maxResults: 50,
   renderTimer: 0,
-  renterDelay: 250,
+  renderDelay: 250,
 };
 const db = {};
 const state = {
   results: {
     items: [],
-    bodyIds: new Set(),
-    years: new Set(),
   },
 };
 
 // delay search for a few milliseconds, so it only executes when there is a pause in typing
 const delay = (callback, ms) => {
-  let timer = 0;
+  let context = this; timer = 0;
   return function() {
-    let context = this, args = arguments;
+    let args = arguments;
     clearTimeout(timer);
     timer = setTimeout(function () {
       callback.apply(context, args);
@@ -303,19 +301,46 @@ const renderResults = (resEl, toRender) => {
   settings.renderTimer = setTimeout(() => renderResults(resEl, toRender), timeout);
 };
 
+const displaySuggestions = (suggestions) => {
+  if (suggestions.length === 0) {
+    return;
+  }
+  const suggestion = suggestions[0].terms;
+  const suggestBox = document.getElementById('searchSuggest');
+  suggestBox.innerHTML = '<ul><li>' + suggestion.join('</li><li>') + '</li></ul>';
+  suggestBox.showPopover();
+};
+
+const suggest = (query) => {
+  const suggestions = db.search.autoSuggest(
+    query,
+    {
+      prefix: true,
+      fuzzy: (term) => term.length > 3
+    }
+  );
+  displaySuggestions(suggestions);
+};
+
 const onType = () => {
+  const suggestBox = document.getElementById('searchSuggest');
   const acEl = document.getElementById('autoComplete');
   const resEl = document.getElementById('results');
   const value = acEl.value.trim();
   clearTimeout(settings.renderTimer);
   resEl.innerHTML = '';
+  suggestBox.hidePopover();
   if (value.length <= 2) {
     return;
   }
   const results = db.search.search(value);
-  filters.makeElements(results);
-  state.results.items = results;
-  onFilterChange();
+  if (results.length > 0) {
+    filters.makeElements(results);
+    state.results.items = results;
+    onFilterChange();
+  } else {
+    suggest(value);
+  }
 };
 
 const onFilterChange = () => {
