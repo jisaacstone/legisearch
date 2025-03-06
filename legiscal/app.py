@@ -1,6 +1,7 @@
 from functools import partial
 from flask import Flask, request, Response, render_template, jsonify
-from legiscal.cal import gen_ical, fetch_bodies
+from legiscal.cal import gen_ical
+from legisearch.legistar import fetch_bodies
 
 app = Flask(__name__)
 BASEURL = 'https://webapi.legistar.com/v1/'
