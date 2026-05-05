@@ -26,46 +26,74 @@ async def insert_bodies(namespace: str, conn):
 async def fetch_more_events(
     namespace: str,
     limit=100,
+    min_id=0,
     refetch_nonfinal=False,
+    check_gaps=False,
 ):
     '''check the max event id from the db, and fetch `limit` more events'''
     minid = None
     async with db.new_connection(namespace) as conn:
-        event_item_iter = await event_item_fetch_iter(conn, refetch_nonfinal, namespace, limit)
+        event_item_iter = await event_item_fetch_iter(conn, refetch_nonfinal, check_gaps, namespace, limit, min_id)
         inserted = 0
         async for event, items in event_item_iter:
             if not inserted % 15:
                 print(f'\r{event["EventId"]} has {len(items)} items', end='')
             try:
                 filtered = format_event(namespace, event, items)
+                if filtered:
+                    await insert_event(conn, filtered, refetch_nonfinal)
+                    inserted += 1
             except Exception:
                 print('FAIL', namespace, event, items)
-            if filtered:
-                await insert_event(conn, filtered, refetch_nonfinal)
-                inserted += 1
         print(f'\rinserted {inserted} events')
 
-async def event_item_fetch_iter(conn, refetch_nonfinal, namespace, limit):
-    if refetch_nonfinal:
-        return await fetch_for_refetch(conn, namespace, limit)
-    else:
-        minid = await fetch_minid(conn, namespace)
-        if minid is None:
-            minid = 0
-        print(f'fetching up to {limit} {namespace} events, minid {minid}\n')
-        return fetch_event_items(
-            namespace, min_id=minid, limit=limit
-        )
 
-async def fetch_for_refetch(conn, namespace='', limit=100):
+async def event_item_fetch_iter(conn, refetch_nonfinal, check_gaps, namespace, limit, min_id):
+    if refetch_nonfinal:
+        return await fetch_for_refetch(conn, namespace, limit, min_id)
+    if check_gaps:
+        return await fetch_check_gaps(conn, namespace, limit, min_id)
+    if not min_id:
+        min_id = await fetch_minid(conn, namespace)
+    if not min_id:
+        min_id = 0
+    print(f'fetching up to {limit} {namespace} events, minid {min_id}\n')
+    return fetch_event_items(
+        namespace, min_id=min_id, limit=limit
+    )
+
+
+async def fetch_for_refetch(conn, namespace: str, limit: int, min_id: int):
     result = await conn.execute(
         select(db.events.c.id)
         .where(db.events.c.minutes_status.notin_(FINALSTATUSES))
+        .where(db.events.c.id > min_id)
         .order_by(db.events.c.id)
         .limit(limit)
     )
     ids_to_refetch = list(result.scalars())
     return fetch_event_items(namespace, ids=ids_to_refetch)
+
+
+async def fetch_check_gaps(conn, namespace: str, limit: int, min_id: int):
+    last = None
+    found = []
+    min_ = min_id if min_id else 0
+
+    result = await conn.execute(
+        select(db.events.c.id)
+        .where(db.events.c.id > min_)
+        .order_by(db.events.c.id)
+    )
+    for id_, in result:
+        if last is not None and id_ != last + 1:
+            found += list(range(last + 1, id_))
+            if len(found) > limit:
+                break
+        last = id_
+    print('gaps to check:', found)
+    return fetch_event_items(namespace, ids=found)
+
 
 async def fetch_minid(conn, namespace='', retry=True):
     try:

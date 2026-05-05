@@ -69,7 +69,7 @@ def events_url(
     return url, params
 
 
-def items_url(namespace: str, event_id: int) -> Tuple[str, Dict[str, str]]:
+def items_url(namespace: str, event_id: int, safe: bool = False) -> Tuple[str, Dict[str, str]]:
     ''' The data can sometimes be messy, the observed order is
     EventItemMintuesSequence but sometimes this value is null.
     '''
@@ -82,9 +82,17 @@ def items_url(namespace: str, event_id: int) -> Tuple[str, Dict[str, str]]:
         'MinutesNote': '1',
         'Attachments': '1',
         '$expand': 'EventItemMatterAttachments',
-        '$select': ','.join(ITEMFIELDS),
         '$orderby': 'EventItemMinutesSequence,EventItemAgendaSequence'
     }
+    fields = ITEMFIELDS
+
+    # some server side error we are trying to avoid
+    if safe:
+        params['$select'] = ','.join(f for f in ITEMFIELDS if 'EventItemMatterAttachments' not in f)
+    if not safe:
+        params['$expand'] = 'EventItemMatterAttachments'
+        params['$select'] = ','.join(ITEMFIELDS),
+
     return url, params
 
 
@@ -120,6 +128,8 @@ async def fetch_events(
 
     will start at `min_id` and continue until `limit`
     '''
+    if ids == []:
+        return
     if ids:
         if len(ids) == 1:
             filter_ += f' and EventId eq {ids[0]}'
@@ -161,8 +171,7 @@ async def fetch_items(
             continue
         events.append(event)
         # fetch event items
-        iurl, iparams = items_url(namespace, event['EventId'])
-        futures.append(client.get(iurl, params=iparams, timeout=TM))
+        futures.append(fetch_item(client, namespace, event['EventId']))
 
     for event, item_resp in zip(events, await asyncio.gather(*futures)):
         item = item_resp.json()
@@ -170,6 +179,23 @@ async def fetch_items(
     for event in noitemevents:
         yield (event, [])
 
+
+async def fetch_item(client: httpx.AsyncClient, namespace: str, event_id: int):
+    iurl, iparams = items_url(namespace, event_id)
+    try:
+        item_resp = await client.get(iurl, params=iparams, timeout=TM)
+        item_resp.raise_for_status()
+        return item_resp
+    except httpx.HTTPStatusError as e:
+        # the server returns a 500 with LINQ error for matters with no items...
+        if e.response.status_code == 500:
+            if "'EventItemMatterAttachments' is not supported" in e.response.text:
+                print('legistar server error, trying to compensate')
+                iurl, iparams = items_url(namespace, event_id, safe=True)
+                item_resp = await client.get(iurl, params=iparams, timeout=TM)
+                item_resp.raise_for_status()
+                return item_resp
+        raise
 
 def add_item_data(namespace, item):
     # sqlite supports json, but the python stdlib doesn't interface easily

@@ -42,8 +42,18 @@ def parser() -> argparse.ArgumentParser:
         default=50
     )
     fetch_parser.add_argument(
+        '-m', '--min-id',
+        help='id to start from',
+        type=int,
+    )
+    fetch_parser.add_argument(
         '--refetch-nonfinal',
         help='re-fetch events which did not have final minutes',
+        action='store_true'
+    )
+    fetch_parser.add_argument(
+        '--check-gaps',
+        help='check gaps in event ids',
         action='store_true'
     )
     fetch_parser.set_defaults(func=fetch_more_events)
