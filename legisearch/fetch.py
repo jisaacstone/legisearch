@@ -42,7 +42,10 @@ async def fetch_more_events(
         async for event, items in event_item_iter:
             if not inserted % 15:
                 print(f'\r{event["EventId"]} has {len(items)} items', end='')
-            filtered = format_event(namespace, event, items)
+            try:
+                filtered = format_event(namespace, event, items)
+            except Exception:
+                print('FAIL', namespace, event, items)
             if filtered:
                 await insert_event(conn, filtered)
                 inserted += 1
@@ -52,9 +55,9 @@ async def fetch_more_events(
 async def fetch_minid(conn, refetch_nonfinal, namespace='', retry=True):
     try:
         if refetch_nonfinal:
-            result = await conn.exectue(
-                select(db.events)
-                .where(db.events.c.minutestatus != FINALSTATUS)
+            result = await conn.execute(
+                select(func.min(db.events.c.id) - 1)
+                .where(db.events.c.minutes_status != FINALSTATUS)
             )
         else:
             result = await conn.execute(
@@ -152,6 +155,15 @@ def append_item_data(item_base, new_data):
 async def insert_event(conn, event):
     # insert event
     # json.dump(event, sys.stdout, indent=2, default=str)
+    print({
+            'id': event['EventId'],
+            'body_id': event['EventBodyId'],
+            'meeting_time': event['datetime'],
+            'agenda_url': event['EventAgendaFile'] or '',
+            'minutes_url': event.get('EventMinutesFile'),
+            'minutes_status': event.get('EventMinutesStatusId'),
+            'insite_url': event.get('EventInSiteURL')
+        })
     await conn.execute(
         db.events.insert(),
         [{
@@ -180,6 +192,7 @@ async def insert_event(conn, event):
                 'matter_type': item['EventItemMatterType'],
             } for item in event['items']]
         )
+    await conn.commit()
 
 
 if __name__ == '__main__':
@@ -196,7 +209,11 @@ if __name__ == '__main__':
         )
         inserted = 0
         async for event, items in event_item_iter:
-            filtered = format_event(namespace, event, items)
-            pprint(filtered)
+            try:
+                filtered = format_event(namespace, event, items)
+                pprint(filtered)
+            except Exception:
+                print('FAIL!', namespace, event, items)
+                raise
 
     asyncio.run(fn())
