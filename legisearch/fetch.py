@@ -2,11 +2,11 @@
 
 from typing import Mapping, Any
 import json
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from dateutil.parser import parse
 from sqlalchemy import func, select, exc
-from legisearch.legistar import fetch_event_items, \
-    FINALSTATUS, fetch_bodies, add_item_data, add_matter_data
+from legisearch.legistar import FAKEFINALSTATUS, FINALSTATUS, fetch_event_items, \
+    FINALSTATUSES, fetch_bodies, add_item_data, add_matter_data
 from legisearch import db
 
 
@@ -31,13 +31,7 @@ async def fetch_more_events(
     '''check the max event id from the db, and fetch `limit` more events'''
     minid = None
     async with db.new_connection(namespace) as conn:
-        minid = await fetch_minid(conn, refetch_nonfinal, namespace)
-        if minid is None:
-            minid = 0
-        print(f'fetching up to {limit} {namespace} events, minid {minid}\n')
-        event_item_iter = fetch_event_items(
-            namespace, min_id=minid, limit=limit
-        )
+        event_item_iter = await event_item_fetch_iter(conn, refetch_nonfinal, namespace, limit)
         inserted = 0
         async for event, items in event_item_iter:
             if not inserted % 15:
@@ -47,22 +41,37 @@ async def fetch_more_events(
             except Exception:
                 print('FAIL', namespace, event, items)
             if filtered:
-                await insert_event(conn, filtered)
+                await insert_event(conn, filtered, refetch_nonfinal)
                 inserted += 1
         print(f'\rinserted {inserted} events')
 
+async def event_item_fetch_iter(conn, refetch_nonfinal, namespace, limit):
+    if refetch_nonfinal:
+        return await fetch_for_refetch(conn, namespace, limit)
+    else:
+        minid = await fetch_minid(conn, namespace)
+        if minid is None:
+            minid = 0
+        print(f'fetching up to {limit} {namespace} events, minid {minid}\n')
+        return fetch_event_items(
+            namespace, min_id=minid, limit=limit
+        )
 
-async def fetch_minid(conn, refetch_nonfinal, namespace='', retry=True):
+async def fetch_for_refetch(conn, namespace='', limit=100):
+    result = await conn.execute(
+        select(db.events.c.id)
+        .where(db.events.c.minutes_status.notin_(FINALSTATUSES))
+        .order_by(db.events.c.id)
+        .limit(limit)
+    )
+    ids_to_refetch = list(result.scalars())
+    return fetch_event_items(namespace, ids=ids_to_refetch)
+
+async def fetch_minid(conn, namespace='', retry=True):
     try:
-        if refetch_nonfinal:
-            result = await conn.execute(
-                select(func.min(db.events.c.id) - 1)
-                .where(db.events.c.minutes_status != FINALSTATUS)
-            )
-        else:
-            result = await conn.execute(
-                select(func.max(db.events.c.id))
-            )
+        result = await conn.execute(
+            select(func.max(db.events.c.id))
+        )
         minid, = result.fetchone()
         return minid
     except exc.OperationalError:
@@ -152,18 +161,12 @@ def append_item_data(item_base, new_data):
                 item_base[to_merge] = new_data[to_merge].strip()
 
 
-async def insert_event(conn, event):
+async def insert_event(conn, event, refetch_nonfinal: bool = False):
     # insert event
-    # json.dump(event, sys.stdout, indent=2, default=str)
-    print({
-            'id': event['EventId'],
-            'body_id': event['EventBodyId'],
-            'meeting_time': event['datetime'],
-            'agenda_url': event['EventAgendaFile'] or '',
-            'minutes_url': event.get('EventMinutesFile'),
-            'minutes_status': event.get('EventMinutesStatusId'),
-            'insite_url': event.get('EventInSiteURL')
-        })
+    status = event.get('EventMinutesStatusId')
+    if refetch_nonfinal and status != FINALSTATUS and event['datetime'] < datetime.now() - timedelta(days=21):
+        status = FAKEFINALSTATUS
+
     await conn.execute(
         db.events.insert(),
         [{
@@ -172,7 +175,7 @@ async def insert_event(conn, event):
             'meeting_time': event['datetime'],
             'agenda_url': event['EventAgendaFile'] or '',
             'minutes_url': event.get('EventMinutesFile'),
-            'minutes_status': event.get('EventMinutesStatusId'),
+            'minutes_status': status,
             'insite_url': event.get('EventInSiteURL')
         }]
     )
@@ -192,7 +195,7 @@ async def insert_event(conn, event):
                 'matter_type': item['EventItemMatterType'],
             } for item in event['items']]
         )
-    await conn.commit()
+    # await conn.commit()
 
 
 if __name__ == '__main__':

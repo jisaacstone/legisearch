@@ -1,3 +1,4 @@
+from json.decoder import JSONDecodeError
 from typing import Mapping, Tuple, Dict, Any, AsyncGenerator, Optional
 from urllib import request
 from datetime import datetime, time
@@ -45,6 +46,8 @@ ITEMFIELDS = (
     'EventItemMatterType')
 TEMPLATE = 'councildoc.html.template'
 FINALSTATUS = 10  # for re-downloading non-final events
+FAKEFINALSTATUS = -10  # sommetimes it is never updated - for very old nonfinal
+FINALSTATUSES = (FINALSTATUS, FAKEFINALSTATUS)
 TM = 10000  # default timeout ten seconds
 
 
@@ -87,15 +90,16 @@ def items_url(namespace: str, event_id: int) -> Tuple[str, Dict[str, str]]:
 
 async def fetch_event_items(
     namespace: str,
-    min_id=0,
-    limit=math.inf,
+    min_id: int = 0,
+    ids: list[str] = None,
+    limit: int = math.inf,
     fields=EVENTFIELDS,
     filter_='EventAgendaFile ne null',
 ) -> AsyncGenerator[Tuple[Mapping[str, Any], Mapping[str, Any]], None]:
     transport = httpx.AsyncHTTPTransport(retries=2)
     async with httpx.AsyncClient(transport=transport) as client:
         event_gen = fetch_events(
-            client, namespace, min_id, limit, fields, filter_
+            client, namespace, min_id, ids, limit, fields, filter_
         )
         async for event, items in fetch_items(
             client, namespace, event_gen
@@ -107,6 +111,7 @@ async def fetch_events(
     client: httpx.AsyncClient,
     namespace: str,
     min_id=0,
+    ids=None,
     limit=math.inf,
     fields=EVENTFIELDS,
     filter_='EventAgendaFile ne null',
@@ -115,14 +120,24 @@ async def fetch_events(
 
     will start at `min_id` and continue until `limit`
     '''
-    if min_id:
+    if ids:
+        if len(ids) == 1:
+            filter_ += f' and EventId eq {ids[0]}'
+        else:
+            id_str = ' or EventId eq '.join(repr(i) for i in ids if i)
+            filter_ += f' and (EventId eq {id_str})'
+    elif min_id:
         filter_ += f' and EventId gt {min_id}'
     url, params = events_url(namespace, min_id, limit, fields)
     if filter_:
         params['$filter'] = filter_
     omid = min_id
     response = await client.get(url, params=params, timeout=TM)
-    events = response.json()
+    try:
+        events = response.json()
+    except JSONDecodeError:
+        print('failed to parse respose', response.status_code, response.text)
+        raise
     for event in events:
         limit -= 1
         yield event
