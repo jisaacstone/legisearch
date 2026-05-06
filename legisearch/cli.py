@@ -45,6 +45,7 @@ def parser() -> argparse.ArgumentParser:
         '-m', '--min-id',
         help='id to start from',
         type=int,
+        default=0
     )
     fetch_parser.add_argument(
         '--refetch-nonfinal',
