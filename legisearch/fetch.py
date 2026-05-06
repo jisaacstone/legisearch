@@ -36,8 +36,6 @@ async def fetch_more_events(
         event_item_iter = await event_item_fetch_iter(conn, refetch_nonfinal, check_gaps, namespace, limit, min_id)
         inserted = 0
         async for event, items in event_item_iter:
-            if not inserted % 15:
-                print(f'\r{event["EventId"]} has {len(items)} items', end='')
             try:
                 filtered = format_event(namespace, event, items)
                 if filtered:
@@ -72,6 +70,7 @@ async def fetch_for_refetch(conn, namespace: str, limit: int, min_id: int):
         .limit(limit)
     )
     ids_to_refetch = list(result.scalars())
+    print('nonfinal ids rechecking:', ids_to_refetch)
     return fetch_event_items(namespace, ids=ids_to_refetch)
 
 
@@ -193,6 +192,7 @@ async def insert_event(conn, event, refetch_nonfinal: bool = False):
     # insert event
     status = event.get('EventMinutesStatusId')
     if refetch_nonfinal and status != FINALSTATUS and event['datetime'] < datetime.now() - timedelta(days=21):
+        print('faking final status for old event', event['EventId'])
         status = FAKEFINALSTATUS
 
     await conn.execute(

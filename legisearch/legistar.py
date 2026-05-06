@@ -54,7 +54,7 @@ TM = 10000  # default timeout ten seconds
 def events_url(
     namespace: str,
     min_id: int = 0,
-    limit: int = 1000,
+    limit: int | None = None,
     fields=EVENTFIELDS,
 ) -> Tuple[str, Dict[str, str]]:
     '''An assumption here is that event_id always increases'''
@@ -100,19 +100,25 @@ async def fetch_event_items(
     namespace: str,
     min_id: int = 0,
     ids: list[str] = None,
-    limit: int = math.inf,
+    limit: int | None = None,
     fields=EVENTFIELDS,
     filter_='EventAgendaFile ne null',
 ) -> AsyncGenerator[Tuple[Mapping[str, Any], Mapping[str, Any]], None]:
     transport = httpx.AsyncHTTPTransport(retries=2)
     async with httpx.AsyncClient(transport=transport) as client:
-        event_gen = fetch_events(
-            client, namespace, min_id, ids, limit, fields, filter_
-        )
-        async for event, items in fetch_items(
-            client, namespace, event_gen
-        ):
-            yield event, items
+        try:
+            event_gen = fetch_events(
+                client, namespace, min_id, ids, limit, fields, filter_
+            )
+            async for event, items in fetch_items(
+                client, namespace, event_gen
+            ):
+                yield event, items
+        except httpx.HTTPError as e:
+            print(e)
+            print(e.response.status_code)
+            print(e.response.text)
+            raise
 
 
 async def fetch_events(
@@ -120,7 +126,7 @@ async def fetch_events(
     namespace: str,
     min_id=0,
     ids=None,
-    limit=math.inf,
+    limit=None,
     fields=EVENTFIELDS,
     filter_='EventAgendaFile ne null',
 ) -> AsyncGenerator[Mapping[str, Any], None]:
@@ -134,7 +140,7 @@ async def fetch_events(
         if len(ids) == 1:
             filter_ += f' and EventId eq {ids[0]}'
         else:
-            id_str = ' or EventId eq '.join(repr(i) for i in ids if i)
+            id_str = ' or EventId eq '.join(repr(i) for i in ids[:10] if i)
             filter_ += f' and (EventId eq {id_str})'
     elif min_id:
         filter_ += f' and EventId gt {min_id}'
@@ -143,17 +149,23 @@ async def fetch_events(
         params['$filter'] = filter_
     omid = min_id
     response = await client.get(url, params=params, timeout=TM)
+    response.raise_for_status()
     try:
         events = response.json()
     except JSONDecodeError:
         print('failed to parse respose', response.status_code, response.text)
         raise
     for event in events:
-        limit -= 1
+        if limit:
+            limit -= 1
         yield event
 
     if limit and min_id != omid:
-        async for event in fetch_events(min_id, limit):
+        async for event in fetch_events(client, namespace, min_id, limit):
+            yield event
+
+    if ids and len(ids) > 10:
+        async for event in fetch_events(client, namespace, ids=ids[10:]):
             yield event
 
 
