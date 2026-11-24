@@ -106,7 +106,7 @@ async def fetch_minid(conn, namespace='', retry=True):
             # probably our first run
             print('mmm, db seems missing. attempting to create')
             await setup_db(namespace, conn)
-            return await fetch_minid(conn, refetch_nonfinal, False)
+            return await fetch_minid(conn, namespace, False)
         else:
             raise
 

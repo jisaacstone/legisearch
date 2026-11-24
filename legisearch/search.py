@@ -1,15 +1,13 @@
-# -*- coding: utf-8 -*-
-
-import re
 import json
+import re
 from collections import defaultdict
-from sqlalchemy import select, func
 from legisearch import db
+from sqlalchemy import func, select
 
 
 async def search(
     namespace,
-    search_string='',
+    search_string="",
     body=0,
     year=0,
     month=0,
@@ -19,21 +17,35 @@ async def search(
         .select_from(db.items)
         .join(db.events, db.items.c.event_id == db.events.c.id)
     )
+
     if search_string:
         low = search_string.lower()
-        query = query.where(func.instr(db.items.c.full_text_lower, low))
-    if body:
-        result = await conn.execute(select(db.bodies))
-        bodies = {int(row[1]): row[0] for row in result}
-        body_id = bodies.get(body, body)
-        query = query.where(db.events.c.body_id == body_id)
+        # Case-insensitive fallback: lowercase the COALESCE output completely
+        query = query.where(
+            func.instr(
+                func.lower(
+                    func.coalesce(db.items.c.full_text_lower, db.items.c.title)
+                ),
+                low,
+            )
+        )
+
     if year:
         if month:
-            ln, v = 8, f'{year}-{month}'
+            v = f"{year}-{int(month):02d}"
+            ln = 8
         else:
-            ln, v = 5, str(year)
+            v = str(year)
+            ln = 5
         query = query.where(func.substr(db.events.c.meeting_time, 0, ln) == v)
+
     async with db.new_connection(namespace) as conn:
+        if body:
+            result = await conn.execute(select(db.bodies))
+            bodies = {int(row[1]): row[0] for row in result}
+            body_id = bodies.get(body, body)
+            query = query.where(db.events.c.body_id == body_id)
+
         print(query)
         result = await conn.execute(query)
         for row in result:
@@ -70,7 +82,8 @@ async def report(namespace, body_id):
             if row['agenda_number'] in ('1.', '2.'):
                 continue
             print(row["full_text_lower"])
-        if row.get('title') and re.match('\d\.\d', row['agenda_number']):
+#        if row.get('title') and re.match('\d\.\d', row['agenda_number']):
+        if row.get('title') and row.get('agenda_number') and re.match(r'\d\.\d', str(row['agenda_number'])):
             titles[row['title'].strip().lower()].append(f"{row['agenda_number']}, {row['meeting_time'].year}, {row['meeting_time'].month}")
 
     json.dump(dict(sorted(titles.items())), sys.stdout)
